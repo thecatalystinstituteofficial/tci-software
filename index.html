@@ -1441,15 +1441,22 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             alert('Another user changed this data at the same time. The latest data will be loaded now - please repeat your last entry.');
             await pull(); refresh(); setSt('Latest data loaded')
         }
+        let ck = null, ch = null;
         async function checkNew() {
-            if (!USER || busy || $('#modal').style.display == 'flex') return;
+            if (!USER) return;
+            const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.closest('form');
+            if (busy || typing || $('#modal').style.display == 'flex') { clearTimeout(ck); ck = setTimeout(checkNew, 3000); return }
             try { const { data } = await sb.from('app_data').select('key,version'); if (data && data.some(x => ver[x.key] != x.version)) { await pull(); refresh(); setSt('Updated with latest data') } } catch (e) { }
         }
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) checkNew() }); setInterval(checkNew, 60000);
+        function listen() {
+            if (ch) return;
+            ch = sb.channel('app_data_changes').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_data' }, () => checkNew()).subscribe()
+        }
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) checkNew() }); setInterval(checkNew, 15000);
         async function enter(session) {
             USER = session.user.email; $('#who').textContent = USER; $('#lgl').textContent = 'Loading data...'; $('#lgf').style.display = 'none'; $('#lg').style.display = 'flex';
             try { await pull() } catch (e) { USER = ''; $('#lgl').textContent = ''; $('#lgf').style.display = 'block'; $('#lge').textContent = 'Could not load data: ' + e.message; return }
-            $('#lg').style.display = 'none'; CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); buildNav(); deptSel(); go('dash'); setSt('All changes saved')
+            listen(); $('#lg').style.display = 'none'; CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); buildNav(); deptSel(); go('dash'); setSt('All changes saved')
         }
         $('#lgf').onsubmit = async e => {
             e.preventDefault(); $('#lge').textContent = '';
