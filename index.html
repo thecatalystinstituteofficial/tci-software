@@ -932,7 +932,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         let UI = {}; try { UI = JSON.parse(localStorage.getItem('cms_ui')) || {} } catch (e) { }
         let root = { cur: UI.cur || 'comp', cm: UI.cm || '', gx: [], ow: [], depts: {} };
         function norm() {
-            root.gx = root.gx || []; root.ow = root.ow || []; if (!DEPTS[root.cur]) root.cur = 'comp';
+            root.gx = root.gx || []; root.ow = root.ow || []; if (!DK.includes(root.cur)) root.cur = DK[0] || 'comp';
             DK.forEach(k => { const d = Object.assign(DEF(), root.depts[k] || {}); delete d.u; delete d.cm; const used = d.s.length || d.t.length || Object.keys(d.a).length; if (!d.cfg || (!d.cfgv && k != 'comp' && !used && d.cfg.b.join() == LEG.join())) d.cfg = JSON.parse(JSON.stringify(CFG0[k])); d.cfgv = 1; root.depts[k] = d });
             db = root.depts[root.cur]; DEPT = DEPTS[root.cur]; applyCfg()
         }
@@ -961,9 +961,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         const TB = (h, r, e = 'No records found.') => `<div class="tw"><table><tr>${h.map(x => `<th>${x}</th>`).join('')}</tr>${r.length ? r.join('') : `<tr><td colspan="${h.length}">${e}</td></tr>`}</table></div>`;
         const months = (a, b) => { const r = []; let [y, m] = a.slice(0, 7).split('-').map(Number); const e = b.slice(0, 7); while (r.length < 48) { const s = y + '-' + String(m).padStart(2, '0'); if (s > e) break; r.push(s); if (++m > 12) { m = 1; y++ } } return r };
         const NAV = [['dash', 'Dashboard'], ['stu', 'Admissions'], ['att', 'Attendance'], ['fee', 'Fee Collection'], ['tch', 'Teachers & Payroll'], ['exp', 'Expenses'], ['rep', 'Student Report'], ['fin', 'Finance Report'], ['set', 'Department Settings'], ['ifin', 'Institute Finance'], ['xl', 'Export to Excel']];
-        const buildNav = () => { $('#nav').innerHTML = NAV.map(([k, v]) => (k == 'ifin' ? '<div class="nsep">Whole Institute</div>' : '') + `<button data-k="${k}" onclick="go('${k}')">${v}</button>`).join('') };
+        const buildNav = () => { $('#nav').innerHTML = (isT() ? NAV.filter(([k]) => k == 'att' || k == 'rep') : NAV).map(([k, v]) => (k == 'ifin' ? '<div class="nsep">Whole Institute</div>' : '') + `<button data-k="${k}" onclick="go('${k}')">${v}</button>`).join('') };
         const PG = {};
-        function go(k) { if (!PG[k]) k = 'dash'; CK = k; bar(); document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.k == k)); PG[k](); scrollTo(0, 0) }
+        function go(k) { if (isT() && k != 'att' && k != 'rep') k = 'att'; if (!PG[k]) k = 'dash'; CK = k; bar(); document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.k == k)); PG[k](); scrollTo(0, 0) }
         let PT = '';
         function modal(h, pr = true) { PT = ''; $('#mbox').innerHTML = `<div id="pm">${h}</div><div class="btns np" style="justify-content:center">${pr ? '<button class="btn" onclick="printEl(\'#pm\')">Print / Save as PDF</button>' : ''}<button class="btn k" onclick="closeM()">Close</button></div>`; $('#modal').style.display = 'flex' }
         const closeM = () => { PT = ''; $('#modal').style.display = 'none' }; $('#modal').onclick = e => { if (e.target.id == 'modal') closeM() };
@@ -1183,8 +1183,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
  <div class="two"><div><h4>Attendance Summary</h4><div class="sum"><div><b>${T}</b><span>Classes</span></div><div><b>${P}</b><span>Present</span></div><div><b>${A}</b><span>Absent</span></div><div><b>${L}</b><span>Leave</span></div></div>
  <p>Attendance: <b>${pc}%</b> - ${grade}</p><div class="bar"><i style="width:${pc}%"></i></div>
  ${TB(['Month', 'Present', 'Absent', 'Leave', '%'], Object.keys(mo).sort().map(m => { const x = mo[m], n = x.P + x.A + x.L; return `<tr><td>${mn(m)}</td><td>${x.P}</td><td>${x.A}</td><td>${x.L}</td><td>${Math.round(x.P * 100 / n)}%</td></tr>` }), 'No attendance in this period.')}</div>
- <div><h4>Fee Statement (Monthly ${rs(s.fee)})</h4>${TB(['Month', 'Status', 'Paid On', 'Amount'], fr.map(({ m, p }) => `<tr><td>${mn(m)}</td><td><b>${p ? 'Paid' : 'Due'}</b></td><td>${p ? p.date : '-'}</td><td>${rs(p ? p.amt : s.fee)}</td></tr>`), 'No months in range.')}
- <p>Paid: <b>${rs(paid)}</b> | Outstanding: <b>${rs(due)}</b></p></div></div>
+ ${isT() ? '' : ` <div><h4>Fee Statement (Monthly ${rs(s.fee)})</h4>${TB(['Month', 'Status', 'Paid On', 'Amount'], fr.map(({ m, p }) => `<tr><td>${mn(m)}</td><td><b>${p ? 'Paid' : 'Due'}</b></td><td>${p ? p.date : '-'}</td><td>${rs(p ? p.amt : s.fee)}</td></tr>`), 'No months in range.')}
+ <p>Paid: <b>${rs(paid)}</b> | Outstanding: <b>${rs(due)}</b></p></div>`}</div>
  <h4>Performance Assessment</h4><div class="pf">${RF.map((x, i) => `<div><span>${x}</span><b>${esc(r['q' + i] || 'Not rated')}</b></div>`).join('')}</div><p><b>Remarks:</b> ${esc(r.rem || '-')}</p>
  <div class="sg"><div>Class Teacher</div><div>Principal</div><div>Parent / Guardian</div></div><div class="ft">Computer generated report - ${INST}, ${DEPT}</div></div></div>`
         }
@@ -1401,72 +1401,125 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         };
 
 
-        /* ONLINE (SUPABASE): login + cloud save */
+        /* ONLINE (SUPABASE): login, roles (super_admin / admin / teacher), cloud save */
         const SB_URL = 'https://gzaatamtjcqiijhqqqdk.supabase.co', SB_KEY = 'sb_publishable_b43Ayeq_txEGgbJ14JyP3w_K9F4oFzA';
         const sb = supabase.createClient(SB_URL, SB_KEY);
-        const KEYS = ['comp', 'coach', 'eng', 'inst'];
-        let USER = '', ver = {}, snap = {}, Q = Promise.resolve(), busy = 0, retry = null;
+        const KEYS = ['comp', 'coach', 'eng', 'inst'], J = JSON.stringify, RN = { super_admin: 'Super Admin', admin: 'Admin', teacher: 'Teacher' };
+        let USER = '', ROLE = '', ver = {}, snap = {}, base = {}, Q = Promise.resolve(), busy = 0, dirty = false, tmr = null, retry = null, ck = null, ch = null;
+        const isT = () => ROLE == 'teacher';
         const setSt = (t, bad) => { const e = $('#sst'); e.textContent = t; e.style.background = bad ? '#d62828' : '#111'; e.style.color = bad ? '#fff' : '#ffc300' };
         const split = () => { const o = {}; DK.forEach(k => o[k] = root.depts[k]); o.inst = { gx: root.gx, ow: root.ow }; return o };
+        const clone = x => JSON.parse(J(x === undefined ? {} : x));
         function save() {
-            try { localStorage.setItem('cms_ui', JSON.stringify({ cur: root.cur, cm: root.cm })) } catch (e) { }
-            if (!USER) return;
-            const sp = split(), items = [];
-            KEYS.forEach(k => { const s = JSON.stringify(sp[k]); if (s != snap[k]) { snap[k] = s; items.push([k, JSON.parse(s)]) } });
-            if (!items.length) return;
-            busy++; setSt('Saving...'); Q = Q.then(() => flush(items)).finally(() => { busy-- })
+            try { localStorage.setItem('cms_ui', J({ cur: root.cur, cm: root.cm })) } catch (e) { }
+            if (!USER) return; dirty = true; setSt('Saving...'); clearTimeout(tmr); tmr = setTimeout(commit, 600)
         }
-        async function flush(items) {
+        function commit() { dirty = false; busy++; Q = Q.then(() => isT() ? flushT() : flushA()).catch(() => { }).finally(() => busy--) }
+        function fail() { setSt('NOT SAVED - check internet', true); clearTimeout(retry); retry = setTimeout(save, 8000) }
+        /* 3-way merge so two people saving different things at the same time never lose data */
+        function merge3(b, l, s, deep) {
+            const out = {}, ks = new Set([...Object.keys(b || {}), ...Object.keys(l || {}), ...Object.keys(s || {})]);
+            for (const k of ks) {
+                const bv = b && b[k], lv = l && l[k], sv = s && s[k];
+                if (J(lv) == J(sv)) out[k] = lv; else if (J(lv) == J(bv)) out[k] = sv; else if (J(sv) == J(bv)) out[k] = lv;
+                else if (!deep && (k == 'a' || k == 'rp')) { const m = merge3(bv, lv, sv, true); if (!m) return null; out[k] = m } else return null
+            }
+            return out
+        }
+        async function mergeIn(k) {
+            const { data, error } = await sb.from('app_data').select('value,version').eq('key', k).single(); if (error) throw error;
+            const m = merge3(base[k] || {}, split()[k], data.value || {}); if (!m) return false;
+            if (k == 'inst') { root.gx = m.gx || []; root.ow = m.ow || [] } else root.depts[k] = m;
+            ver[k] = data.version; base[k] = clone(data.value); norm(); return true
+        }
+        async function flushA() {
+            const sp = split(), items = KEYS.filter(k => J(sp[k]) != snap[k]); if (!items.length) { setSt('All changes saved'); return }
+            let merged = false;
             try {
-                for (const [k, val] of items) {
-                    const v = ver[k], { data, error } = await sb.from('app_data').update({ value: val, version: v + 1, updated_at: new Date().toISOString(), updated_by: USER }).eq('key', k).eq('version', v).select('version');
-                    if (error) throw error;
-                    if (!data || !data.length) { await conflict(); return }
-                    ver[k] = data[0].version
+                for (const k of items) {
+                    let val = split()[k], tries = 0;
+                    while (true) {
+                        const v = ver[k], { data, error } = await sb.from('app_data').update({ value: val, version: v + 1, updated_at: new Date().toISOString(), updated_by: USER }).eq('key', k).eq('version', v).select('version');
+                        if (error) throw error;
+                        if (data && data.length) { ver[k] = data[0].version; snap[k] = J(val); base[k] = clone(val); break }
+                        if (++tries > 3 || !(await mergeIn(k))) { await conflict(); return }
+                        merged = true; val = split()[k]
+                    }
+                }
+                setSt('All changes saved'); if (merged) softRefresh()
+            } catch (e) { fail() }
+        }
+        async function flushT() {
+            try {
+                for (const k of DK) {
+                    const d = root.depts[k], b = base[k] || {}, pa = {}, pr = {};
+                    for (const x in d.a) if (J(d.a[x]) != J((b.a || {})[x])) pa[x] = d.a[x];
+                    for (const x in d.rp) if (J(d.rp[x]) != J((b.rp || {})[x])) pr[x] = d.rp[x];
+                    if (!Object.keys(pa).length && !Object.keys(pr).length) continue;
+                    const { data, error } = await sb.rpc('teacher_save', { p_key: k, p_a: pa, p_rp: pr }); if (error) throw error;
+                    ver[k] = data; base[k] = Object.assign(b, { a: { ...(b.a || {}), ...pa }, rp: { ...(b.rp || {}), ...pr } })
                 }
                 setSt('All changes saved')
-            } catch (e) {
-                items.forEach(([k]) => snap[k] = null); setSt('NOT SAVED - check internet', true);
-                clearTimeout(retry); retry = setTimeout(save, 8000)
-            }
+            } catch (e) { fail() }
         }
-        async function pull() {
+        async function pullA() {
             const { data, error } = await sb.from('app_data').select('key,value,version'); if (error) throw error;
             const r = { cur: root.cur, cm: root.cm, gx: [], ow: [], depts: {} };
             data.forEach(x => { ver[x.key] = x.version; if (x.key == 'inst') { r.gx = (x.value || {}).gx || []; r.ow = (x.value || {}).ow || [] } else r.depts[x.key] = x.value || {} });
-            root = r; norm(); const sp = split(); KEYS.forEach(k => snap[k] = JSON.stringify(sp[k]))
+            root = r; norm(); const sp = split(); KEYS.forEach(k => { snap[k] = J(sp[k]); base[k] = JSON.parse(snap[k]) })
         }
+        async function pullT() {
+            const { data, error } = await sb.rpc('teacher_load'); if (error) throw error;
+            const r = { cur: root.cur, cm: root.cm, gx: [], ow: [], depts: {} };
+            for (const k in data) { ver[k] = data[k].version; r.depts[k] = data[k].value || {} }
+            root = r; norm(); const sp = split(); DK.forEach(k => { snap[k] = J(sp[k]); base[k] = JSON.parse(snap[k]) })
+        }
+        const pull = () => isT() ? pullT() : pullA();
         function refresh() { CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); deptSel(); go(CK) }
+        function softRefresh() { if (CK == 'att' && atab == 'm') { deptSel(); bar() } else refresh() } /* never wipe a half-marked attendance sheet */
         async function conflict() {
-            alert('Another user changed this data at the same time. The latest data will be loaded now - please repeat your last entry.');
+            alert('Another user changed the same data at the same time. The latest data will be loaded now - please repeat your last entry.');
             await pull(); refresh(); setSt('Latest data loaded')
         }
-        let ck = null, ch = null;
         async function checkNew() {
-            if (!USER) return;
-            const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.closest('form');
-            if (busy || typing || $('#modal').style.display == 'flex') { clearTimeout(ck); ck = setTimeout(checkNew, 3000); return }
-            try { const { data } = await sb.from('app_data').select('key,version'); if (data && data.some(x => ver[x.key] != x.version)) { await pull(); refresh(); setSt('Updated with latest data') } } catch (e) { }
+            if (!USER) return; const ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.closest('form');
+            if (busy || dirty || typing || $('#modal').style.display == 'flex') { clearTimeout(ck); ck = setTimeout(checkNew, 3000); return }
+            try {
+                let nw;
+                if (isT()) { const { data } = await sb.rpc('teacher_versions'); nw = data && DK.some(k => ver[k] != data[k]) }
+                else { const { data } = await sb.from('app_data').select('key,version'); nw = data && data.some(x => ver[x.key] != x.version) }
+                if (nw) { await pull(); softRefresh(); setSt('Updated with latest data') }
+            } catch (e) { }
         }
         function listen() {
-            if (ch) return;
+            if (ch || isT()) return;
             ch = sb.channel('app_data_changes').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_data' }, () => checkNew()).subscribe()
         }
         document.addEventListener('visibilitychange', () => { if (!document.hidden) checkNew() }); setInterval(checkNew, 15000);
+        addEventListener('beforeunload', e => { if (busy || dirty) { e.preventDefault(); e.returnValue = '' } });
+        function showLogin(msg) { USER = ''; ROLE = ''; $('#lg').style.display = 'flex'; $('#lgl').textContent = ''; $('#lgf').style.display = 'block'; $('#lge').textContent = msg || '' }
         async function enter(session) {
-            USER = session.user.email; $('#who').textContent = USER; $('#lgl').textContent = 'Loading data...'; $('#lgf').style.display = 'none'; $('#lg').style.display = 'flex';
-            try { await pull() } catch (e) { USER = ''; $('#lgl').textContent = ''; $('#lgf').style.display = 'block'; $('#lge').textContent = 'Could not load data: ' + e.message; return }
-            listen(); $('#lg').style.display = 'none'; CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); buildNav(); deptSel(); go('dash'); setSt('All changes saved')
+            USER = session.user.email; $('#lgl').textContent = 'Loading data...'; $('#lgf').style.display = 'none'; $('#lg').style.display = 'flex';
+            try {
+                const { data: rr, error: re } = await sb.from('user_roles').select('role,depts').maybeSingle(); if (re) throw re;
+                if (!rr) { await sb.auth.signOut(); return showLogin('No role is assigned to this account yet. Please ask the Super Admin.') }
+                ROLE = rr.role;
+                if (isT() && rr.depts && rr.depts.length) { const keep = DK.filter(k => rr.depts.includes(k)); DK.length = 0; DK.push(...keep) }
+                if (!DK.length) throw new Error('No department is assigned to this account.');
+                await pull()
+            } catch (e) { return showLogin('Could not load data: ' + e.message) }
+            $('#who').textContent = USER + ' (' + RN[ROLE] + ')'; listen(); $('#lg').style.display = 'none';
+            CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); buildNav(); deptSel(); go(isT() ? 'att' : 'dash'); setSt('All changes saved')
         }
         $('#lgf').onsubmit = async e => {
             e.preventDefault(); $('#lge').textContent = '';
             const { data, error } = await sb.auth.signInWithPassword({ email: $('#lgm').value.trim(), password: $('#lgp').value });
             if (error) { $('#lge').textContent = error.message; return } enter(data.session)
         };
-        async function logout() { if (busy && !confirm('Some changes are still saving. Sign out anyway?')) return; await sb.auth.signOut(); location.reload() }
+        async function logout() { if ((busy || dirty) && !confirm('Some changes are still saving. Sign out anyway?')) return; await sb.auth.signOut(); location.reload() }
         (async () => {
             try { const { data } = await sb.auth.getSession(); if (data.session) return enter(data.session) } catch (e) { }
-            $('#lgl').textContent = ''; $('#lgf').style.display = 'block'; setSt('Not signed in')
+            showLogin(''); setSt('Not signed in')
         })();
     </script>
 </body>
