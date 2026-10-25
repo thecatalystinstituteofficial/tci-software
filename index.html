@@ -948,11 +948,20 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         const mEnd = m => { const [y, k] = m.split('-').map(Number); return m + '-' + String(new Date(y, k, 0).getDate()).padStart(2, '0') };
         const mLong = m => { const [y, n] = m.split('-'); return new Date(y, n - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' }) };
         const dIn = m => m == mon() ? today() : mEnd(m);
-        const enr = (m = CM) => db.s.filter(s => s.date.slice(0, 7) <= m);
-        const attS = (b, d) => db.s.filter(s => s.batch == b && s.date <= d);
+        /* a student is "live" from the admission month until (not including) the month he was removed (s.end) */
+        const live = (s, m) => s.date.slice(0, 7) <= m && (!s.end || m < s.end);
+        const enr = (m = CM) => db.s.filter(s => live(s, m));
+        const attS = (b, d) => db.s.filter(s => s.batch == b && s.date <= d && (!s.end || d.slice(0, 7) < s.end));
+        /* fee: how much a student paid / still owes for a month */
+        const paidOf = (id, m) => db.f.filter(f => f.sid == id && f.month == m).reduce((a, f) => a + (+f.amt || 0), 0);
+        const owed = (s, m) => Math.max(0, (+s.fee || 0) - paidOf(s.id, m));
+        const feeTag = (s, m) => { const p = paidOf(s.id, m), o = owed(s, m); return o == 0 ? '<span class="tag ok">Paid</span>' : p > 0 ? `<span class="tag lv">Partial - ${rs(o)} left</span>` : '<span class="tag no">Due</span>' };
+        /* roles: Super Admin = everything, Admin = view + add only (no edit / delete), Teacher = own pages */
+        const canMod = () => ROLE == 'super_admin' || ROLE == 'teacher';
+        const deny = () => { alert('Only the Super Admin can edit or delete. Your role (Admin) can view and add only.'); return false };
         function bar() {
             const c = mon(), rel = CM == c ? 'Current Month' : CM < c ? 'Previous Month' : 'Upcoming Month', all = CK == 'ifin';
-            const n = all ? DK.reduce((a, k) => a + root.depts[k].s.filter(s => s.date.slice(0, 7) <= CM).length, 0) : enr().length;
+            const n = all ? DK.reduce((a, k) => a + root.depts[k].s.filter(s => live(s, CM)).length, 0) : enr().length;
             $('#mbar').innerHTML = `<span class="tag no">${all ? 'All Departments' : esc(DEPT)}</span><b>Viewing Month:</b><button class="btn k s" onclick="setM(mAdd(CM,-1))">&#9664; Prev</button><input type="month" value="${CM}" onchange="setM(this.value)"><button class="btn k s" onclick="setM(mAdd(CM,1))">Next &#9654;</button><button class="btn y s" onclick="setM(mon())">This Month</button><span class="tag ${CM == c ? 'ok' : 'lv'}">${rel}</span><span class="hint">${mLong(CM)} | ${n} students enrolled</span>`
         }
         function setM(v) { if (!v) return; CM = v; root.cm = v; save(); go(CK) }
@@ -961,7 +970,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         const TB = (h, r, e = 'No records found.') => `<div class="tw"><table><tr>${h.map(x => `<th>${x}</th>`).join('')}</tr>${r.length ? r.join('') : `<tr><td colspan="${h.length}">${e}</td></tr>`}</table></div>`;
         const months = (a, b) => { const r = []; let [y, m] = a.slice(0, 7).split('-').map(Number); const e = b.slice(0, 7); while (r.length < 48) { const s = y + '-' + String(m).padStart(2, '0'); if (s > e) break; r.push(s); if (++m > 12) { m = 1; y++ } } return r };
         const NAV = [['dash', 'Dashboard'], ['stu', 'Admissions'], ['att', 'Attendance'], ['my', 'My Attendance & Salary'], ['fee', 'Fee Collection'], ['tch', 'Teachers & Payroll'], ['tat', 'Teacher Attendance'], ['exp', 'Expenses'], ['rep', 'Student Report'], ['tst', 'Test Reports'], ['fin', 'Finance Report'], ['set', 'Department Settings'], ['ifin', 'Institute Finance'], ['xl', 'Export to Excel']];
-        const navOk = k => isT() ? ['att', 'my', 'rep', 'tst'].includes(k) && (k != 'tst' || root.cur == 'coach') : k != 'my' && (k != 'tst' || root.cur == 'coach');
+        const navOk = k => isT() ? ['att', 'my', 'rep', 'tst'].includes(k) && (k != 'tst' || root.cur == 'coach') : k != 'my' && (k != 'tst' || root.cur == 'coach') && (k != 'set' || canMod());
         const buildNav = () => { $('#nav').innerHTML = NAV.filter(([k]) => navOk(k)).map(([k, v]) => (k == 'ifin' ? '<div class="nsep">Whole Institute</div>' : '') + `<button data-k="${k}" class="${k == CK ? 'on' : ''}" onclick="go('${k}')">${v}</button>`).join('') };
         const PG = {};
         function go(k) { if (!navOk(k)) k = isT() ? 'my' : 'dash'; if (!PG[k]) k = 'dash'; CK = k; bar(); document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.k == k)); PG[k](); scrollTo(0, 0) }
@@ -987,16 +996,17 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             const m = CM, en = enr(m), pb = {}; let P = 0, A = 0, L = 0;
             for (const k in db.a) { const [d, b] = k.split('|'); if (!d.startsWith(m)) continue; pb[b] = pb[b] || { P: 0, A: 0, L: 0 }; for (const i in db.a[k]) { const v = db.a[k][i]; if (!stu(i)) continue; pb[b][v]++; v == 'P' ? P++ : v == 'A' ? A++ : L++ } }
             const col = sum(db.f.filter(f => f.month == m)), sal = sum(db.p.filter(p => p.month == m)), ex = sum(db.x.filter(x => x.date.startsWith(m)));
-            const adm = db.s.filter(s => s.adm && s.date.startsWith(m)).reduce((a, s) => a + +s.adm, 0), paid = new Set(db.f.filter(f => f.month == m).map(f => f.sid)), pend = en.filter(s => !paid.has(s.id)), T = P + A + L, pc = T ? Math.round(P * 100 / T) : 0, nt = db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= m).length;
+            const adm = db.s.filter(s => s.adm && s.date.startsWith(m)).reduce((a, s) => a + +s.adm, 0), paid = new Set(db.f.filter(f => f.month == m).map(f => f.sid)), pend = en.filter(s => owed(s, m) > 0), salPend = db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= m).reduce((a, t) => a + Math.max(0, tPay(t, m).earned - sum(db.p.filter(p => p.tid == t.id && p.month == m))), 0), T = P + A + L, pc = T ? Math.round(P * 100 / T) : 0, nt = db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= m).length;
             $('#main').innerHTML = `<h2>Dashboard<small>${DEPT} | ${mLong(m)}</small></h2>
  <div class="stats"><div class="st"><b>${en.length}</b><span>Enrolled students</span></div><div class="st"><b>${pc}%</b><span>Attendance (${P}P / ${A}A / ${L}L)</span></div>
- <div class="st"><b>${rs(col)}</b><span>Fees collected</span></div><div class="st"><b>${rs(pend.reduce((a, s) => a + +s.fee, 0))}</b><span>Fees pending (${pend.length})</span></div>
- <div class="st"><b>${rs(sal)}</b><span>Salaries paid</span></div><div class="st"><b>${rs(ex)}</b><span>Expenses</span></div><div class="st"><b>${rs(col - sal - ex)}</b><span>Net balance</span></div><div class="st"><b>${rs(adm)}</b><span>Admission fees (separate)</span></div><div class="st"><b>${nt}</b><span>Teachers</span></div></div>
+ <div class="st"><b>${rs(col)}</b><span>Fees collected</span></div><div class="st"><b>${rs(pend.reduce((a, s) => a + owed(s, m), 0))}</b><span>Fees remaining (${pend.length})</span></div>
+ <div class="st"><b>${rs(sal)}</b><span>Salaries paid</span></div><div class="st"><b>${rs(salPend)}</b><span>Salaries remaining</span></div><div class="st"><b>${rs(ex)}</b><span>Expenses</span></div><div class="st"><b>${rs(col - sal - ex)}</b><span>Net balance</span></div><div class="st"><b>${rs(adm)}</b><span>Admission fees (separate)</span></div><div class="st"><b>${nt}</b><span>Teachers</span></div></div>
  <div class="card"><h3>Batch Overview - ${mLong(m)}</h3>${TB([BN, 'Students', 'Present', 'Absent', 'Leave'], B.map(b => { const x = pb[b] || { P: 0, A: 0, L: 0 }; return `<tr><td>${bl(b)}</td><td>${en.filter(s => s.batch == b).length}</td><td>${x.P}</td><td>${x.A}</td><td>${x.L}</td></tr>` }))}</div>
- <div class="card"><h3>Pending Fees - ${mn(m)}</h3>${TB(['ID', 'Student', 'Course', BN, 'Phone', 'Fee'], pend.map(s => `<tr><td>${sid(s)}</td><td>${esc(s.name)}</td><td>${esc(s.course || '')}</td><td>${bl(s.batch)}</td><td>${esc(s.phone)}</td><td>${rs(s.fee)}</td></tr>`), 'All fees are collected.')}</div>
- <div class="card"><h3>Data Backup (all departments)</h3><div class="btns" style="margin:0"><button class="btn k s" onclick="backup()">Download Backup</button><label class="btn y s" style="margin:0;color:#111;cursor:pointer">Restore Backup<input type="file" accept=".json" hidden onchange="restore(this)"></label></div></div>`};
+ <div class="card"><h3>Remaining Fees - ${mn(m)}</h3>${TB(['ID', 'Student', 'Course', BN, 'Phone', 'Fee', 'Paid', 'Remaining'], pend.map(s => `<tr><td>${sid(s)}</td><td>${esc(s.name)}</td><td>${esc(s.course || '')}</td><td>${bl(s.batch)}</td><td>${esc(s.phone)}</td><td>${rs(s.fee)}</td><td>${rs(paidOf(s.id, m))}</td><td><b>${rs(owed(s, m))}</b></td></tr>`), 'All fees are collected.')}</div>
+ <div class="card"><h3>Data Backup (all departments)</h3><div class="btns" style="margin:0"><button class="btn k s" onclick="backup()">Download Backup</button>${canMod() ? `<label class="btn y s" style="margin:0;color:#111;cursor:pointer">Restore Backup<input type="file" accept=".json" hidden onchange="restore(this)"></label>` : ''}</div></div>`};
         function backup() { const a = document.createElement('a'); a.href = 'data:application/json,' + encodeURIComponent(JSON.stringify(root)); a.download = 'catalyst-backup-all-departments.json'; a.click() }
         function restore(i) {
+            if (!canMod()) { i.value = ''; return deny() }
             const f = i.files[0]; if (!f) return; const r = new FileReader();
             r.onload = () => {
                 try {
@@ -1015,20 +1025,30 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             phd = ''; $('#main').innerHTML = `<h2>Student Admissions</h2><div class="card"><form onsubmit="saveS(event)"><input type="hidden" id="sidn"><div class="grid">` +
                 F('Student Name', 'sn', 'text', '', 'required') + F("Father's Name", 'sf', 'text', '', 'required') + F('Phone', 'sp', 'tel', '', 'required') + S('Course', 'sc', COURSES) + S(BT, 'sb', BO) + F('Monthly Fee (Rs)', 'sfe', 'number', '', 'required min="0"') + F('Admission Fee (Rs) - optional', 'sadm', 'number', '', 'min="0" placeholder="Leave empty if none"') + F('Admission Date', 'sd', 'date', dIn(CM)) + F('Photo (optional)', 'sph', 'file', '', 'accept="image/*" onchange="pic(this)"') + F('Address', 'sa') +
                 `</div><div class="btns"><button class="btn">Save Student</button><button type="button" class="btn k" onclick="PG.stu()">Reset</button></div></form></div>
- <div class="card"><div class="row">${F('Search', 'q', 'text', '', 'placeholder="Name, ID or phone" oninput="listS()"')}${S(BN, 'qb', BA, '', 'onchange="listS()"')}${S('Show', 'qe', [['m', 'Enrolled up to ' + mLong(CM)], ['a', 'All students']], 'm', 'onchange="listS()"')}<button class="btn k" onclick="printEl('#slw')">Print List</button></div><div id="slw">${PH('Student List - ' + mLong(CM))}<div id="sl"></div></div></div>`; listS()
+ <div class="card"><div class="row">${F('Search', 'q', 'text', '', 'placeholder="Name, ID or phone" oninput="listS()"')}${S(BN, 'qb', BA, '', 'onchange="listS()"')}${S('Show', 'qe', [['m', 'Enrolled in ' + mLong(CM)], ['a', 'All students']], 'm', 'onchange="listS()"')}<button class="btn k" onclick="printEl('#slw')">Print List</button></div><div id="slw">${PH('Student List - ' + mLong(CM))}<div id="sl"></div></div></div>`; listS()
         };
         function pic(i) { const f = i.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = 180; c.height = 220; const x = c.getContext('2d'), s = Math.max(180 / im.width, 220 / im.height); x.drawImage(im, (180 - im.width * s) / 2, (220 - im.height * s) / 2, im.width * s, im.height * s); phd = c.toDataURL('image/jpeg', .7) }; im.src = r.result }; r.readAsDataURL(f) }
         function saveS(e) {
-            e.preventDefault(); const id = $('#sidn').value, o = { name: $('#sn').value, father: $('#sf').value, phone: $('#sp').value, course: $('#sc').value, batch: $('#sb').value, fee: $('#sfe').value, adm: $('#sadm').value, date: $('#sd').value, addr: $('#sa').value };
+            e.preventDefault(); if ($('#sidn').value && !canMod()) return deny(); const id = $('#sidn').value, o = { name: $('#sn').value, father: $('#sf').value, phone: $('#sp').value, course: $('#sc').value, batch: $('#sb').value, fee: $('#sfe').value, adm: $('#sadm').value, date: $('#sd').value, addr: $('#sa').value };
             if (id) { const s = stu(id); Object.assign(s, o); if (phd) s.photo = phd } else db.s.push({ id: db.n++, photo: phd, ...o }); save(); PG.stu()
         }
         function listS() {
             const q = $('#q').value.toLowerCase(), b = $('#qb').value, e = $('#qe').value, pd = new Set(db.f.filter(f => f.month == CM).map(f => f.sid));
-            const l = db.s.filter(s => (e == 'a' || s.date.slice(0, 7) <= CM) && (!b || s.batch == b) && (s.name + sid(s) + s.phone).toLowerCase().includes(q));
-            $('#sl').innerHTML = `<p><b>${l.length}</b> students | Fee status shown for <b>${mLong(CM)}</b></p>` + TB(['ID', 'Name', "Father", 'Course', BN, 'Fee', 'Adm. Fee', 'Phone', 'Admitted', mn(CM) + ' Fee', ''], l.map(s => `<tr><td>${sid(s)}</td><td>${esc(s.name)}</td><td>${esc(s.father)}</td><td>${esc(s.course || '')}</td><td>${bl(s.batch)}</td><td>${rs(s.fee)}</td><td>${s.adm ? rs(s.adm) : '-'}</td><td>${esc(s.phone)}</td><td>${esc(s.date)}</td><td>${s.date.slice(0, 7) > CM ? '-' : `<span class="tag ${pd.has(s.id) ? 'ok' : 'no'}">${pd.has(s.id) ? 'Paid' : 'Due'}</span>`}</td><td class="np">${(() => { const p = db.f.filter(f => f.sid == s.id && f.month == CM).pop(); return p ? `<button class="btn k s" onclick="rcpt(${p.id})">Fee Slip</button> ` : '' })()}<button class="btn y s" onclick="idCard(${s.id})">ID Card</button> <button class="btn k s" onclick="editS(${s.id})">Edit</button> <button class="btn s" onclick="delS(${s.id})">Delete</button></td></tr>`), 'No students yet. Use the form above to add one.')
+            const l = db.s.filter(s => (e == 'a' || live(s, CM)) && (!b || s.batch == b) && (s.name + sid(s) + s.phone).toLowerCase().includes(q));
+            $('#sl').innerHTML = `<p><b>${l.length}</b> students | Fee status shown for <b>${mLong(CM)}</b></p>` + TB(['ID', 'Name', "Father", 'Course', BN, 'Fee', 'Adm. Fee', 'Phone', 'Admitted', mn(CM) + ' Fee', ''], l.map(s => `<tr><td>${sid(s)}</td><td>${esc(s.name)}</td><td>${esc(s.father)}</td><td>${esc(s.course || '')}</td><td>${bl(s.batch)}</td><td>${rs(s.fee)}</td><td>${s.adm ? rs(s.adm) : '-'}</td><td>${esc(s.phone)}</td><td>${esc(s.date)}${s.end ? `<br><small>Left from ${mn(s.end)}</small>` : ''}</td><td>${!live(s, CM) ? '-' : feeTag(s, CM)}</td><td class="np">${(() => { const p = db.f.filter(f => f.sid == s.id && f.month == CM).pop(); return p ? `<button class="btn k s" onclick="rcpt(${p.id})">Fee Slip</button> ` : '' })()}<button class="btn y s" onclick="idCard(${s.id})">ID Card</button> ${canMod() ? `<button class="btn k s" onclick="editS(${s.id})">Edit</button> ` + (live(s, CM) ? `<button class="btn s" onclick="delS(${s.id})">Remove</button>` : s.end && s.date.slice(0, 7) < CM ? `<button class="btn y s" onclick="restS(${s.id})">Re-admit</button>` : '') : ''}</td></tr>`), 'No students yet. Use the form above to add one.')
         }
-        function editS(id) { const s = stu(id); scrollTo(0, 0); $('#sidn').value = id;[['sn', 'name'], ['sf', 'father'], ['sp', 'phone'], ['sc', 'course'], ['sb', 'batch'], ['sfe', 'fee'], ['sadm', 'adm'], ['sd', 'date'], ['sa', 'addr']].forEach(([a, b]) => $('#' + a).value = s[b] || '') }
-        function delS(id) { if (confirm('Delete this student along with attendance and fee records?')) { db.s = db.s.filter(s => s.id != id); db.f = db.f.filter(f => f.sid != id); for (const k in db.a) delete db.a[k][id]; save(); listS() } }
+        function editS(id) { if (!canMod()) return deny(); const s = stu(id); scrollTo(0, 0); $('#sidn').value = id;[['sn', 'name'], ['sf', 'father'], ['sp', 'phone'], ['sc', 'course'], ['sb', 'batch'], ['sfe', 'fee'], ['sadm', 'adm'], ['sd', 'date'], ['sa', 'addr']].forEach(([a, b]) => $('#' + a).value = s[b] || '') }
+        function delS(id) {
+            if (!canMod()) return deny(); const s = stu(id); if (!s) return; const m = CM, am = s.date.slice(0, 7);
+            if (m <= am) {
+                if (confirm(s.name + ' was admitted in ' + mLong(am) + ' (this month or later). Removing now deletes the student completely, with attendance and fee records. Continue?')) { db.s = db.s.filter(x => x.id != id); db.f = db.f.filter(f => f.sid != id); for (const k in db.a) delete db.a[k][id]; save(); listS() }
+                return
+            }
+            if (confirm('Remove ' + s.name + ' from ' + mLong(m) + ' onwards?\n\nPrevious months stay exactly as they are (attendance and fee history are kept). The student will not appear in ' + mLong(m) + ' or any later month.')) {
+                s.end = m; for (const k in db.a) if (k.slice(0, 7) >= m && db.a[k]) delete db.a[k][id]; save(); listS()
+            }
+        }
+        function restS(id) { if (!canMod()) return deny(); const s = stu(id); if (s && confirm('Re-admit ' + s.name + '? The student will appear again in all months from admission.')) { delete s.end; save(); listS() } }
         function idCard(id) {
             const s = stu(id); modal(`<div class="idc"><div class="h">${INST}<small>${DEPT.toUpperCase()} - STUDENT ID CARD</small></div><div class="b"><div class="phb">${s.photo ? `<img src="${s.photo}">` : esc(s.name[0] || '?').toUpperCase()}</div>
  <div><p><b>${esc(s.name)}</b></p><p>Father: ${esc(s.father)}</p><p>Course: ${esc(s.course || '-')}</p><p>${BN}: ${bl(s.batch)}</p><p>Phone: ${esc(s.phone)}</p><p>Admitted: ${esc(s.date)}</p></div></div><div class="f">${sid(s)}</div></div>`)
@@ -1045,7 +1065,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         }
         function srchA() { const q = $('#as').value.toLowerCase(); document.querySelectorAll('#al tr[data-n]').forEach(r => r.style.display = r.dataset.n.includes(q) ? '' : 'none') }
         function markAll(v) { document.querySelectorAll(`#al input[value=${v}]`).forEach(r => r.checked = true) }
-        function saveAtt() { const o = {}; attS($('#ab').value, $('#ad').value).forEach(s => { const c = document.querySelector(`input[name=r${s.id}]:checked`); if (c) o[s.id] = c.value }); db.a[$('#ad').value + '|' + $('#ab').value] = o; save(); alert('Attendance saved.') }
+        function saveAtt() { const ak = $('#ad').value + '|' + $('#ab').value; if (ROLE == 'admin' && db.a[ak] && Object.keys(db.a[ak]).length) return alert('Attendance for this date and batch is already saved. Only the Super Admin can change it.'); const o = {}; attS($('#ab').value, $('#ad').value).forEach(s => { const c = document.querySelector(`input[name=r${s.id}]:checked`); if (c) o[s.id] = c.value }); db.a[$('#ad').value + '|' + $('#ab').value] = o; save(); alert('Attendance saved.') }
         function attRec() { const d = today(); $('#ac').innerHTML = `<div class="card"><div class="row">${F('From', 'rf', 'date', CM + '-01', 'onchange="recList()"')}${F('To', 'rt', 'date', dIn(CM), 'onchange="recList()"')}${S(BT, 'rb', BA, '', 'onchange="recList()"')}${S('Status', 'rs', [['', 'All'], ['P', 'Present'], ['A', 'Absent'], ['L', 'Leave']], '', 'onchange="recList()"')}${F('Student', 'rq', 'text', '', 'placeholder="Name or ID" oninput="recList()"')}<button class="btn k" onclick="printEl('#rpw')">Print / PDF</button></div><div id="rpw">${PH('Attendance Records')}<div id="rr"></div></div></div>`; recList() }
         function recList() {
             const f = $('#rf').value, t = $('#rt').value, b = $('#rb').value, st = $('#rs').value, q = $('#rq').value.toLowerCase(), rows = [];
@@ -1079,21 +1099,22 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         /* FEES */
         PG.fee = () => {
             $('#main').innerHTML = `<h2>Fee Collection</h2><div class="card"><form onsubmit="saveF(event)"><div class="grid">` +
-                S('Student', 'fs', [['', 'Select student'], ...enr().map(s => [s.id, sid(s) + ' - ' + s.name + ' (' + bl(s.batch) + ')'])], '', 'required onchange="fillF()"') + F('Fee Month', 'fm', 'month', CM, 'required') + F('Amount (Rs)', 'fa', 'number', '', 'required min="0"') + F('Payment Date', 'fd', 'date', today()) + S('Payment Method', 'fo', ['Cash', 'Easypaisa', 'JazzCash', 'Bank Transfer']) +
+                S('Student', 'fs', [['', 'Select student'], ...enr().map(s => [s.id, sid(s) + ' - ' + s.name + ' (' + bl(s.batch) + ')'])], '', 'required onchange="fillF()"') + F('Fee Month', 'fm', 'month', CM, 'required onchange="fillF()"') + F('Amount (Rs)', 'fa', 'number', '', 'required min="0"') + F('Payment Date', 'fd', 'date', today()) + S('Payment Method', 'fo', ['Cash', 'Easypaisa', 'JazzCash', 'Bank Transfer']) +
                 `</div><div class="btns"><button class="btn">Record Payment</button></div></form></div>
  <div class="card"><div class="row">${F('Filter by Month', 'ff', 'month', CM, 'onchange="listF()"')}<button class="btn y" onclick="$('#ff').value='';listF()">All Months</button><button class="btn k" onclick="printEl('#fw')">Print / PDF</button></div><div id="fw">${PH('Fee Records')}<div id="fl"></div></div></div>`; listF()
         };
-        function fillF() { const s = stu($('#fs').value); if (s) $('#fa').value = s.fee }
+        function fillF() { const s = stu($('#fs').value); if (s) $('#fa').value = owed(s, $('#fm').value || CM) || s.fee }
         function saveF(e) {
-            e.preventDefault(); const id = +$('#fs').value, m = $('#fm').value; if (db.f.some(f => f.sid == id && f.month == m) && !confirm('A payment already exists for this month. Record another?')) return;
+            e.preventDefault(); const id = +$('#fs').value, m = $('#fm').value; if (stu(id) && owed(stu(id), m) == 0 && db.f.some(f => f.sid == id && f.month == m) && !confirm('The fee of this month is already fully paid. Record another payment?')) return; if (stu(id) && +$('#fa').value > owed(stu(id), m) && owed(stu(id), m) > 0 && !confirm('Amount is more than the remaining ' + rs(owed(stu(id), m)) + '. Continue?')) return;
             const nf = { id: Date.now(), sid: id, month: m, amt: $('#fa').value, date: $('#fd').value, mode: $('#fo').value }; db.f.push(nf); save(); PG.fee(); rcpt(nf.id)
         }
         function listF() {
             const m = $('#ff').value, l = db.f.filter(f => !m || f.month == m).slice().reverse();
-            const pn = m ? enr(m).filter(s => !db.f.some(f => f.sid == s.id && f.month == m)) : []; $('#fl').innerHTML = `<p>Total collected: <b>${rs(sum(l))}</b></p>` + TB(['Date', 'Student', 'Month', 'Amount', 'Method', ''], l.map(f => { const s = stu(f.sid) || { name: '(deleted)' }; return `<tr><td>${f.date}</td><td>${esc(s.name)}</td><td>${mn(f.month)}</td><td>${rs(f.amt)}</td><td>${esc(f.mode)}</td><td class="np"><button class="btn y s" onclick="rcpt(${f.id})">Receipt</button> <button class="btn s" onclick="delF(${f.id})">Delete</button></td></tr>` })) + (m ? `<h3 style="margin:16px 0 8px">Pending for ${mn(m)} (${pn.length}) - ${rs(pn.reduce((a, s) => a + +s.fee, 0))}</h3>` + TB(['ID', 'Student', BN, 'Phone', 'Fee', ''], pn.map(s => `<tr><td>${sid(s)}</td><td>${esc(s.name)}</td><td>${bl(s.batch)}</td><td>${esc(s.phone)}</td><td>${rs(s.fee)}</td><td class="np"><button class="btn y s" onclick="quickF(${s.id})">Collect</button></td></tr>`), 'All fees are collected for this month.') : '')
+            const pn = m ? enr(m).filter(s => owed(s, m) > 0) : [];
+            $('#fl').innerHTML = `<p>Total collected: <b>${rs(sum(l))}</b></p>` + TB(['Date', 'Student', 'Month', 'Amount', 'Method', ''], l.map(f => { const s = stu(f.sid) || { name: '(deleted)' }; return `<tr><td>${f.date}</td><td>${esc(s.name)}</td><td>${mn(f.month)}</td><td>${rs(f.amt)}</td><td>${esc(f.mode)}</td><td class="np"><button class="btn y s" onclick="rcpt(${f.id})">Receipt</button>${canMod() ? ` <button class="btn s" onclick="delF(${f.id})">Delete</button>` : ''}</td></tr>` })) + (m ? `<h3 style="margin:16px 0 8px">Remaining for ${mn(m)} (${pn.length} students) - ${rs(pn.reduce((a, s) => a + owed(s, m), 0))}</h3>` + TB(['ID', 'Student', BN, 'Phone', 'Fee', 'Paid', 'Remaining', ''], pn.map(s => `<tr><td>${sid(s)}</td><td>${esc(s.name)}</td><td>${bl(s.batch)}</td><td>${esc(s.phone)}</td><td>${rs(s.fee)}</td><td>${rs(paidOf(s.id, m))}</td><td><b>${rs(owed(s, m))}</b></td><td class="np"><button class="btn y s" onclick="quickF(${s.id})">Collect</button></td></tr>`), 'All fees are collected for this month.') : '')
         }
         function quickF(id) { scrollTo(0, 0); $('#fs').value = id; $('#fm').value = $('#ff').value; fillF() }
-        function delF(id) { if (confirm('Delete this payment record?')) { db.f = db.f.filter(f => f.id != id); save(); listF() } }
+        function delF(id) { if (!canMod()) return deny(); if (confirm('Delete this payment record?')) { db.f = db.f.filter(f => f.id != id); save(); listF() } }
         function rcpt(id) {
             const f = db.f.find(x => x.id == id), s = f && stu(f.sid); if (!f || !s) return alert('Student record not found for this payment.');
             const tp = sum(db.f.filter(x => x.sid == f.sid && x.month == f.month)), bal = Math.max(0, +s.fee - tp), no = String(f.id).slice(-6);
@@ -1126,29 +1147,43 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
                 F('Full Name', 'tn', 'text', '', 'required') + F('Subject / Designation', 'tr', 'text', '', 'required') + F('Qualification', 'tq') + F('Phone', 'tp', 'tel') + F('Joining Date', 'tj', 'date', dIn(CM)) + F('Fixed Monthly Salary (Rs)', 'ts', 'number', '', 'min="0"') + S('Pay Type', 'tpt', [['f', 'Fixed monthly salary'], ['h', 'Hourly (rate x hours worked)']], 'f') + F('Hourly Rate (Rs per hour)', 'trt', 'number', '', 'min="0"') + F('Duty Start Time', 'tds', 'time') + F('Duty End Time', 'tde', 'time') + F("Login Email (teacher's own login)", 'tem', 'email', '', 'placeholder="e.g. adeel@tci.com"') +
                 `</div><label style="margin-top:12px">Assigned ${BNP}</label>${B.map(b => `<label class="ck"><input type="checkbox" class="tb" value="${esc(b)}">${bl(b)}</label>`).join('')}<div class="btns"><button class="btn">Save Teacher</button><button type="button" class="btn k" onclick="PG.tch()">Reset</button></div></form></div>
  <div class="card"><div class="row">${F('Payroll Month', 'sm', 'month', CM, 'onchange="listT()"')}<button class="btn k" onclick="printEl('#tw')">Print / PDF</button></div><div id="tw">${PH('Teacher Payroll')}<div id="tl"></div></div></div>
- <div class="card"><h3>Salary History</h3>${TB(['Date', 'Teacher', 'Month', 'Amount', ''], db.p.slice().reverse().map(p => { const t = db.t.find(x => x.id == p.tid) || { name: '(deleted)' }; return `<tr><td>${p.date}</td><td>${esc(t.name)}</td><td>${mn(p.month)}</td><td>${rs(p.amt)}</td><td><button class="btn s" onclick="delP(${p.id})">Delete</button></td></tr>` }))}</div>`; listT()
+ <div class="card"><h3>Salary History</h3>${TB(['Date', 'Teacher', 'Month', 'Amount', ''], db.p.slice().reverse().map(p => { const t = db.t.find(x => x.id == p.tid) || { name: '(deleted)' }; return `<tr><td>${p.date}</td><td>${esc(t.name)}</td><td>${mn(p.month)}</td><td>${rs(p.amt)}</td><td>${canMod() ? `<button class="btn s" onclick="delP(${p.id})">Delete</button>` : ''}</td></tr>` }))}</div>`; listT()
         };
         function saveT(e) {
-            e.preventDefault(); const id = $('#tid').value, o = { name: $('#tn').value, role: $('#tr').value, q: $('#tq').value, phone: $('#tp').value, jd: $('#tj').value, sal: $('#ts').value, pt: $('#tpt').value, rate: $('#trt').value, ds: $('#tds').value, de: $('#tde').value, email: $('#tem').value.trim().toLowerCase(), bt: [...document.querySelectorAll('.tb:checked')].map(c => c.value) };
+            e.preventDefault(); if ($('#tid').value && !canMod()) return deny(); const id = $('#tid').value, o = { name: $('#tn').value, role: $('#tr').value, q: $('#tq').value, phone: $('#tp').value, jd: $('#tj').value, sal: $('#ts').value, pt: $('#tpt').value, rate: $('#trt').value, ds: $('#tds').value, de: $('#tde').value, email: $('#tem').value.trim().toLowerCase(), bt: [...document.querySelectorAll('.tb:checked')].map(c => c.value) };
             if (o.pt == 'h' && (!(+o.rate > 0) || !o.ds || !o.de)) return alert('Hourly pay needs an hourly rate, duty start time and duty end time.'); if (o.pt != 'h' && o.sal === '') return alert('Please enter the fixed monthly salary.');
             if (id) Object.assign(db.t.find(t => t.id == id), o); else db.t.push({ id: db.t_n++, ...o }); save(); PG.tch()
         }
         function listT() {
-            const m = $('#sm').value; $('#tl').innerHTML = TB(['Name', 'Subject', 'Qualification', BNP, 'Pay Type', 'Salary / Rate', 'Earned (' + mn(m) + ')', 'Status', ''], db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= m).map(t => {
-                const p = db.p.find(x => x.tid == t.id && x.month == m);
-                return `<tr><td>${esc(t.name)}</td><td>${esc(t.role)}</td><td>${esc(t.q || '-')}</td><td>${(t.bt || []).join(', ') || '-'}</td><td>${t.pt == 'h' ? 'Hourly' : 'Fixed'}</td><td>${t.pt == 'h' ? rs(t.rate) + ' / hr' : rs(t.sal)}</td><td><b>${rs(tPay(t, m).earned)}</b></td><td><span class="tag ${p ? 'ok' : 'no'}">${p ? 'Paid' : 'Due'}</span></td>
- <td class="np">${p ? '' : `<button class="btn y s" onclick="payT(${t.id})">Pay</button> `}<button class="btn k s" onclick="profT(${t.id})">Profile</button> <button class="btn k s" onclick="editT(${t.id})">Edit</button> <button class="btn s" onclick="delT(${t.id})">Delete</button></td></tr>`
-            }), 'No teachers added yet.')
+            const m = $('#sm').value; let te = 0, tp = 0;
+            const rows = db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= m).map(t => {
+                const e = tPay(t, m).earned, pd = sum(db.p.filter(x => x.tid == t.id && x.month == m)), r = Math.max(0, e - pd); te += e; tp += pd;
+                const st = e == 0 && pd == 0 ? ['lv', 'Nothing due'] : r == 0 ? ['ok', 'Paid'] : pd > 0 ? ['lv', 'Partial'] : ['no', 'Due'];
+                return `<tr><td>${esc(t.name)}</td><td>${esc(t.role)}</td><td>${esc(t.q || '-')}</td><td>${(t.bt || []).join(', ') || '-'}</td><td>${t.pt == 'h' ? 'Hourly' : 'Fixed'}</td><td>${t.pt == 'h' ? rs(t.rate) + ' / hr' : rs(t.sal)}</td><td><b>${rs(e)}</b></td><td>${rs(pd)}</td><td><b style="color:${r ? '#d62828' : 'inherit'}">${rs(r)}</b></td><td><span class="tag ${st[0]}">${st[1]}</span></td>
+ <td class="np">${r > 0 ? `<button class="btn y s" onclick="payT(${t.id})">Pay</button> ` : ''}<button class="btn k s" onclick="profT(${t.id})">Profile</button>${canMod() ? ` <button class="btn k s" onclick="editT(${t.id})">Edit</button> <button class="btn s" onclick="delT(${t.id})">Delete</button>` : ''}</td></tr>`
+            });
+            $('#tl').innerHTML = `<div class="stats"><div class="st"><b>${rs(te)}</b><span>Total earned (${mn(m)})</span></div><div class="st"><b>${rs(tp)}</b><span>Paid / cleared</span></div><div class="st"><b>${rs(Math.max(0, te - tp))}</b><span>Remaining to pay</span></div></div>` + TB(['Name', 'Subject', 'Qualification', BNP, 'Pay Type', 'Salary / Rate', 'Earned (' + mn(m) + ')', 'Paid', 'Remaining', 'Status', ''], rows, 'No teachers added yet.')
         }
-        function editT(id) { const t = db.t.find(x => x.id == id); scrollTo(0, 0); $('#tid').value = id;[['tn', 'name'], ['tr', 'role'], ['tq', 'q'], ['tp', 'phone'], ['tj', 'jd'], ['ts', 'sal'], ['tpt', 'pt'], ['trt', 'rate'], ['tds', 'ds'], ['tde', 'de'], ['tem', 'email']].forEach(([a, b]) => $('#' + a).value = t[b] || ''); if (!$('#tpt').value) $('#tpt').value = 'f'; document.querySelectorAll('.tb').forEach(c => c.checked = (t.bt || []).includes(c.value)) }
-        function payT(id) { const t = db.t.find(x => x.id == id); modal(`<div style="width:300px"><h3 style="margin-top:0">Pay Salary - ${esc(t.name)}</h3><p>Month: <b>${mn($('#sm').value)}</b></p>${F('Amount (Rs)', 'pa', 'number', tPay(t, $('#sm').value).earned)}<div class="btns"><button class="btn" onclick="confirmP(${id})">Confirm Payment</button></div></div>`, false) }
-        function confirmP(id) { db.p.push({ id: Date.now(), tid: id, month: $('#sm').value, amt: +$('#pa').value || 0, date: today() }); save(); closeM(); PG.tch() }
-        function delP(id) { if (confirm('Delete this salary record?')) { db.p = db.p.filter(p => p.id != id); save(); PG.tch() } }
-        function delT(id) { if (confirm('Delete this teacher record?')) { db.t = db.t.filter(t => t.id != id); save(); PG.tch() } }
+        function editT(id) { if (!canMod()) return deny(); const t = db.t.find(x => x.id == id); scrollTo(0, 0); $('#tid').value = id;[['tn', 'name'], ['tr', 'role'], ['tq', 'q'], ['tp', 'phone'], ['tj', 'jd'], ['ts', 'sal'], ['tpt', 'pt'], ['trt', 'rate'], ['tds', 'ds'], ['tde', 'de'], ['tem', 'email']].forEach(([a, b]) => $('#' + a).value = t[b] || ''); if (!$('#tpt').value) $('#tpt').value = 'f'; document.querySelectorAll('.tb').forEach(c => c.checked = (t.bt || []).includes(c.value)) }
+        function payT(id) {
+            const t = db.t.find(x => x.id == id), m = $('#sm').value, e = tPay(t, m).earned, p = sum(db.p.filter(x => x.tid == id && x.month == m)), r = Math.max(0, e - p);
+            modal(`<div style="width:320px"><h3 style="margin-top:0">Pay Salary - ${esc(t.name)}</h3><p>Month: <b>${mn(m)}</b></p><p>Earned: <b>${rs(e)}</b> | Already paid: <b>${rs(p)}</b><br>Remaining: <b style="color:#d62828">${rs(r)}</b></p>${F('Amount to pay now (Rs)', 'pa', 'number', r, 'min="1"')}<p><small>You can pay part now and the rest later. Remaining updates automatically.</small></p><div class="btns"><button class="btn" onclick="confirmP(${id})">Confirm Payment</button></div></div>`, false)
+        }
+        function confirmP(id) {
+            const m = $('#sm').value, t = db.t.find(x => x.id == id), a = +$('#pa').value; if (!(a > 0)) return alert('Please enter a valid amount.');
+            const r = tPay(t, m).earned - sum(db.p.filter(x => x.tid == id && x.month == m)); if (a > r && !confirm('This is more than the remaining ' + rs(Math.max(0, r)) + '. Pay anyway?')) return;
+            db.p.push({ id: Date.now(), tid: id, month: m, amt: a, date: today() }); save(); closeM(); PG.tch()
+        }
+        function delP(id) { if (!canMod()) return deny(); if (confirm('Delete this salary record?')) { db.p = db.p.filter(p => p.id != id); save(); PG.tch() } }
+        function delT(id) { if (!canMod()) return deny(); if (confirm('Delete this teacher record?')) { db.t = db.t.filter(t => t.id != id); save(); PG.tch() } }
         function profT(id) {
-            const t = db.t.find(x => x.id == id), p = db.p.filter(x => x.tid == id); modal(`<div style="width:520px;max-width:100%"><div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>${DEPT}</small></div><div><b>TEACHER PROFILE</b></div></div><div class="bd"><div class="kv" style="margin-top:14px">
+            const t = db.t.find(x => x.id == id), p = db.p.filter(x => x.tid == id);
+            const first = (t.jd || p.map(x => x.month).sort()[0] || CM).slice(0, 7); let tE = 0, tP = 0;
+            const mrows = (first <= CM ? months(first, CM) : []).map(m => { const e = tPay(t, m).earned, pd = sum(p.filter(x => x.month == m)); if (!e && !pd) return ''; tE += e; tP += pd; return `<tr><td>${mn(m)}</td><td>${rs(e)}</td><td>${rs(pd)}</td><td><b>${rs(Math.max(0, e - pd))}</b></td></tr>` }).filter(Boolean);
+            const mt = TB(['Month', 'Earned', 'Paid', 'Remaining'], mrows.concat(mrows.length ? [`<tr><td><b>Total</b></td><td><b>${rs(tE)}</b></td><td><b>${rs(tP)}</b></td><td><b>${rs(Math.max(0, tE - tP))}</b></td></tr>`] : []), 'No salary yet.');
+            modal(`<div style="width:520px;max-width:100%"><div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>${DEPT}</small></div><div><b>TEACHER PROFILE</b></div></div><div class="bd"><div class="kv" style="margin-top:14px">
  <div><span>Name</span><b>${esc(t.name)}</b></div><div><span>Subject</span><b>${esc(t.role)}</b></div><div><span>Qualification</span><b>${esc(t.q || '-')}</b></div><div><span>Phone</span><b>${esc(t.phone || '-')}</b></div><div><span>Joined</span><b>${esc(t.jd || '-')}</b></div><div><span>Monthly Salary</span><b>${rs(t.sal)}</b></div></div>
- <h4>Assigned ${BNP}</h4><p>${(t.bt || []).map(bl).join(' | ') || 'None assigned'}</p><h4>Salary Payments</h4>${TB(['Month', 'Date', 'Amount'], p.map(x => `<tr><td>${mn(x.month)}</td><td>${x.date}</td><td>${rs(x.amt)}</td></tr>`), 'No payments yet.')}</div></div></div>`)
+ <h4>Assigned ${BNP}</h4><p>${(t.bt || []).map(bl).join(' | ') || 'None assigned'}</p><h4>Month-wise Salary (up to ${mLong(CM)})</h4>${mt}<h4>Salary Payments</h4>${TB(['Month', 'Date', 'Amount'], p.map(x => `<tr><td>${mn(x.month)}</td><td>${x.date}</td><td>${rs(x.amt)}</td></tr>`), 'No payments yet.')}</div></div></div>`)
         }
 
         /* EXPENSES */
@@ -1159,9 +1194,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         function saveX(e) { e.preventDefault(); db.x.push({ id: Date.now(), date: $('#xd').value, cat: $('#xc').value, desc: $('#xn').value, to: $('#xp').value, amt: $('#xa').value }); save(); PG.exp() }
         function listX() {
             const m = $('#xm').value, c = $('#xf').value, l = db.x.filter(x => (!m || x.date.startsWith(m)) && (!c || x.cat == c)).sort((a, b) => b.date.localeCompare(a.date));
-            $('#xl').innerHTML = `<p>Total expenses: <b>${rs(sum(l))}</b></p>` + TB(['Date', 'Category', 'Description', 'Paid To', 'Amount', ''], l.map(x => `<tr><td>${x.date}</td><td>${esc(x.cat)}</td><td>${esc(x.desc)}</td><td>${esc(x.to || '-')}</td><td>${rs(x.amt)}</td><td class="np"><button class="btn s" onclick="delX(${x.id})">Delete</button></td></tr>`), 'No expenses recorded.')
+            $('#xl').innerHTML = `<p>Total expenses: <b>${rs(sum(l))}</b></p>` + TB(['Date', 'Category', 'Description', 'Paid To', 'Amount', ''], l.map(x => `<tr><td>${x.date}</td><td>${esc(x.cat)}</td><td>${esc(x.desc)}</td><td>${esc(x.to || '-')}</td><td>${rs(x.amt)}</td><td class="np">${canMod() ? `<button class="btn s" onclick="delX(${x.id})">Delete</button>` : ''}</td></tr>`), 'No expenses recorded.')
         }
-        function delX(id) { if (confirm('Delete this expense?')) { db.x = db.x.filter(x => x.id != id); save(); listX() } }
+        function delX(id) { if (!canMod()) return deny(); if (confirm('Delete this expense?')) { db.x = db.x.filter(x => x.id != id); save(); listX() } }
 
         /* STUDENT REPORT */
         const RF = ['Practical Skills', 'Theory Knowledge', 'Punctuality', 'Discipline'], RL = ['Excellent', 'Very Good', 'Good', 'Satisfactory', 'Needs Improvement'];
@@ -1195,7 +1230,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         PG.fin = () => { $('#main').innerHTML = `<h2>Finance Report<small>${mLong(CM)} | change the month from the bar above</small></h2><div class="card"><div class="row"><button class="btn" onclick="printEl('#fv')">Print / Save as PDF (1 page)</button></div></div><div id="fv"></div>`; finDraw() };
         function finDraw() {
             const m = CM, fe = db.f.filter(f => f.month == m), sa = db.p.filter(p => p.month == m), ex = db.x.filter(x => x.date.startsWith(m)), cats = {}; ex.forEach(x => cats[x.cat] = (cats[x.cat] || 0) + +x.amt);
-            const ad = db.s.filter(s => s.adm && s.date.startsWith(m)), adm = ad.reduce((a, s) => a + +s.adm, 0), inc = sum(fe), exp = sum(ex), sl = sum(sa), exs = enr(m), pd = new Set(fe.map(f => f.sid)), pn = exs.filter(s => !pd.has(s.id)), expd = exs.reduce((a, s) => a + +s.fee, 0), pa = pn.reduce((a, s) => a + +s.fee, 0);
+            const ad = db.s.filter(s => s.adm && s.date.startsWith(m)), adm = ad.reduce((a, s) => a + +s.adm, 0), inc = sum(fe), exp = sum(ex), sl = sum(sa), exs = enr(m), pn = exs.filter(s => owed(s, m) > 0), expd = exs.reduce((a, s) => a + +s.fee, 0), pa = pn.reduce((a, s) => a + owed(s, m), 0);
             $('#fv').innerHTML = `<div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>${DEPT}</small></div><div><b style="font-size:15px">MONTHLY FINANCE REPORT</b><small>${mLong(m)}</small></div></div><div class="bd">
  <h4>Summary</h4><div class="sum"><div><b>${rs(inc)}</b><span>Fees Collected</span></div><div><b>${rs(sl)}</b><span>Salaries</span></div><div><b>${rs(exp)}</b><span>Expenses</span></div><div><b>${rs(inc - sl - exp)}</b><span>Net Balance</span></div></div>
  <p>Students: <b>${exs.length}</b> | Expected fees: <b>${rs(expd)}</b> | Collection rate: <b>${expd ? Math.round(inc * 100 / expd) : 0}%</b> | Pending: <b>${rs(pa)}</b> (${pn.length} students)</p>
@@ -1221,6 +1256,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         };
         const lines = id => [...new Set($(id).value.split('\n').map(x => x.replace(/\|/g, '').trim()).filter(Boolean))];
         function saveCfg() {
+            if (!canMod()) return deny();
             const back = {}; B.forEach(b => back[bl(b)] = b);
             const keys = lines('#cb').map(l => back[l] || l), c = lines('#cc'), e = lines('#ce');
             const used = new Set([...db.s.map(s => s.batch), ...db.t.flatMap(t => t.bt || []), ...Object.keys(db.a).map(k => k.split('|')[1])]);
@@ -1237,12 +1273,12 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         const allM = () => { const r = []; DK.forEach(k => { const d = root.depts[k]; d.s.forEach(s => r.push(s.date.slice(0, 7))); d.f.forEach(f => r.push(f.month)); d.p.forEach(p => r.push(p.month)); d.x.forEach(x => r.push(x.date.slice(0, 7))) }); root.gx.forEach(x => r.push(x.date.slice(0, 7))); root.ow.forEach(x => r.push(x.date.slice(0, 7))); return r.filter(Boolean).sort() };
         const rng = () => { if (IP == 'm') return [CM, CM]; if (IP == 'y') return [CM.slice(0, 4) + '-01', CM.slice(0, 4) + '-12']; const a = allM(); return a.length ? [a[0], a[a.length - 1] > mon() ? a[a.length - 1] : mon()] : [mon(), mon()] };
         function dStat(d, ms) {
-            const set = new Set(ms), cap = mon(), paid = new Set(d.f.map(f => f.sid + '|' + f.month));
+            const set = new Set(ms), cap = mon(), paid = d.f.reduce((o, f) => { const k = f.sid + '|' + f.month; o[k] = (o[k] || 0) + (+f.amt || 0); return o }, {});
             const col = sum(d.f.filter(f => set.has(f.month))), sal = sum(d.p.filter(p => set.has(p.month))), ex = sum(d.x.filter(x => set.has(x.date.slice(0, 7))));
             const al = d.s.filter(s => s.adm && set.has(s.date.slice(0, 7))), adm = al.reduce((a, s) => a + +s.adm, 0);
             let exp = 0, pend = 0;
-            d.s.forEach(s => { const am = s.date.slice(0, 7); ms.forEach(m => { if (m < am || (IP != 'm' && m > cap)) return; exp += +s.fee; if (!paid.has(s.id + '|' + m)) pend += +s.fee }) });
-            return { col, sal, ex, exp, pend, adm, net: col - sal - ex, enrolled: d.s.filter(s => s.date.slice(0, 7) <= ms[ms.length - 1]).length }
+            d.s.forEach(s => { const am = s.date.slice(0, 7); ms.forEach(m => { if (m < am || (s.end && m >= s.end) || (IP != 'm' && m > cap)) return; exp += +s.fee; pend += Math.max(0, +s.fee - (paid[s.id + '|' + m] || 0)) }) });
+            return { col, sal, ex, exp, pend, adm, net: col - sal - ex, enrolled: d.s.filter(s => live(s, ms[ms.length - 1])).length }
         }
         PG.ifin = () => {
             $('#main').innerHTML = `<h2>Institute Finance<small>All departments combined | month and year follow the bar above</small></h2>
@@ -1253,9 +1289,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
  <p style="color:var(--mut);font-size:12px">Put in = money the owner gave from his own pocket (or an expense he paid himself - also add that expense above). Took = money the owner withdrew. These are not income or expense; they only change the Final Balance.</p><div id="ol" style="margin-top:12px"></div></div>`; ifinDraw()
         };
         function saveG(e) { e.preventDefault(); root.gx.push({ id: Date.now(), date: $('#gd').value, cat: $('#gc').value, desc: $('#gn').value, amt: $('#ga').value }); save(); PG.ifin() }
-        function delG(id) { if (confirm('Delete this institute expense?')) { root.gx = root.gx.filter(x => x.id != id); save(); ifinDraw() } }
+        function delG(id) { if (!canMod()) return deny(); if (confirm('Delete this institute expense?')) { root.gx = root.gx.filter(x => x.id != id); save(); ifinDraw() } }
         function saveO(e) { e.preventDefault(); root.ow.push({ id: Date.now(), date: $('#od').value, type: $('#ot').value, desc: $('#on').value, amt: $('#oa').value }); save(); PG.ifin() }
-        function delO(id) { if (confirm('Delete this owner entry?')) { root.ow = root.ow.filter(x => x.id != id); save(); ifinDraw() } }
+        function delO(id) { if (!canMod()) return deny(); if (confirm('Delete this owner entry?')) { root.ow = root.ow.filter(x => x.id != id); save(); ifinDraw() } }
         function ifinDraw() {
             const [a, b] = rng(), ms = mrange(a, b), set = new Set(ms), st = DK.map(k => [k, dStat(root.depts[k], ms)]);
             const gx = root.gx.filter(x => set.has(x.date.slice(0, 7))).sort((x, y) => y.date.localeCompare(x.date)), gxs = sum(gx);
@@ -1279,8 +1315,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
  <h4>Owner Pocket</h4>${TB(['Date', 'Type', 'Description', 'Amount'], ow.map(x => `<tr><td>${x.date}</td><td>${x.type == 'in' ? 'Put in' : 'Took'}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td></tr>`), 'No owner entries in this period.')}</div>
  ${IP == 'm' ? '' : `<div><h4>Month-wise Summary</h4>${TB(['Month', 'Collected', 'Admission', 'Salaries', 'Expenses', 'Net'], mrows, 'No activity in this period.')}</div>`}</div>
  <div class="sg"><div>Accountant</div><div>Principal</div></div><div class="ft">Computer generated report - ${INST}</div></div></div>`;
-            $('#gl').innerHTML = `<p>Institute expenses in this period: <b>${rs(gxs)}</b></p>` + TB(['Date', 'Category', 'Description', 'Amount', ''], gx.map(x => `<tr><td>${x.date}</td><td>${esc(x.cat)}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td><td><button class="btn s" onclick="delG(${x.id})">Delete</button></td></tr>`), 'No institute-level expenses in this period.');
-            $('#ol').innerHTML = `<p>Owner put in: <b>${rs(oIn)}</b> | Owner took: <b>${rs(oOut)}</b> | Net (put in - took): <b>${rs(oIn - oOut)}</b></p>` + TB(['Date', 'Type', 'Description', 'Amount', ''], ow.map(x => `<tr><td>${x.date}</td><td>${x.type == 'in' ? 'Put in' : 'Took'}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td><td><button class="btn s" onclick="delO(${x.id})">Delete</button></td></tr>`), 'No owner entries in this period.')
+            $('#gl').innerHTML = `<p>Institute expenses in this period: <b>${rs(gxs)}</b></p>` + TB(['Date', 'Category', 'Description', 'Amount', ''], gx.map(x => `<tr><td>${x.date}</td><td>${esc(x.cat)}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td><td>${canMod() ? `<button class="btn s" onclick="delG(${x.id})">Delete</button>` : ''}</td></tr>`), 'No institute-level expenses in this period.');
+            $('#ol').innerHTML = `<p>Owner put in: <b>${rs(oIn)}</b> | Owner took: <b>${rs(oOut)}</b> | Net (put in - took): <b>${rs(oIn - oOut)}</b></p>` + TB(['Date', 'Type', 'Description', 'Amount', ''], ow.map(x => `<tr><td>${x.date}</td><td>${x.type == 'in' ? 'Put in' : 'Took'}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td><td>${canMod() ? `<button class="btn s" onclick="delO(${x.id})">Delete</button>` : ''}</td></tr>`), 'No owner entries in this period.')
         }
 
         /* EXCEL EXPORT (works offline, no library needed) */
@@ -1346,13 +1382,13 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             const o = { st: [], fe: [], pe: [], at: [], as: [], te: [], sa: [], ex: [], mo: [], ds: [] }, cap = mon();
             keys.forEach(k => {
                 const d = root.depts[k], V = dv(k), byId = {}; d.s.forEach(s => byId[s.id] = s);
-                const sts = d.s.filter(s => XP == 'a' || s.date.slice(0, 7) <= CM);
+                const sts = d.s.filter(s => XP == 'a' || live(s, CM));
                 sts.forEach(s => o.st.push([...V, xid(k, s), s.name, s.father || '', String(s.phone || ''), s.course || '', bl(s.batch), +s.fee || 0, +s.adm || 0, s.date, s.addr || '']));
                 d.f.filter(f => xin(f.month)).sort((a, b) => xd(a.date, b.date)).forEach(f => { const s = byId[f.sid]; o.fe.push([...V, String(f.id).slice(-6), f.date, s ? xid(k, s) : '-', s ? s.name : '(deleted)', s ? s.course || '' : '', s ? bl(s.batch) : '', mn(f.month), f.mode || '', +f.amt || 0]) });
-                const paid = new Set(d.f.map(f => f.sid + '|' + f.month));
+                const paid = d.f.reduce((o, f) => { const k = f.sid + '|' + f.month; o[k] = (o[k] || 0) + (+f.amt || 0); return o }, {});
                 sts.forEach(s => {
                     const a = s.date.slice(0, 7), ms = []; if (XP == 'm') ms.push(CM); else for (let m = a, n = 0; m <= cap && n < 60; m = mAdd(m, 1), n++) ms.push(m);
-                    ms.forEach(m => { if (m < a || paid.has(s.id + '|' + m)) return; o.pe.push([...V, xid(k, s), s.name, String(s.phone || ''), s.course || '', bl(s.batch), mn(m), +s.fee || 0]) })
+                    ms.forEach(m => { const rem = Math.max(0, (+s.fee || 0) - (paid[s.id + '|' + m] || 0)); if (m < a || (s.end && m >= s.end) || !rem) return; o.pe.push([...V, xid(k, s), s.name, String(s.phone || ''), s.course || '', bl(s.batch), mn(m), rem]) })
                 });
                 const cnt = {};
                 Object.keys(d.a).sort().forEach(key => { const [dt, b] = key.split('|'); if (XP == 'm' && !dt.startsWith(CM)) return; for (const i in d.a[key]) { const s = byId[i], v = d.a[key][i]; if (!s || !SL[v]) continue; o.at.push([...V, dt, bl(b), xid(k, s), s.name, s.course || '', SL[v]]); (cnt[i] = cnt[i] || { P: 0, A: 0, L: 0 })[v]++ } });
@@ -1361,7 +1397,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
                 d.p.filter(p => xin(p.month)).sort((a, b) => xd(a.date, b.date)).forEach(p => { const t = d.t.find(x => x.id == p.tid); o.sa.push([...V, p.date, t ? t.name : '(deleted)', mn(p.month), +p.amt || 0]) });
                 const dx = d.x.filter(x => XP == 'a' || x.date.startsWith(CM)).sort((a, b) => xd(a.date, b.date)); dx.forEach(x => o.ex.push([...V, x.date, x.cat, x.desc, x.to || '', +x.amt || 0]));
                 const ms = new Set(); if (XP == 'm') ms.add(CM); else { d.s.forEach(s => ms.add(s.date.slice(0, 7))); d.f.forEach(f => ms.add(f.month)); d.p.forEach(p => ms.add(p.month)); d.x.forEach(x => ms.add(x.date.slice(0, 7))) }
-                [...ms].filter(Boolean).sort().forEach(m => { const col = sum(d.f.filter(f => f.month == m)), sal = sum(d.p.filter(p => p.month == m)), ex = sum(d.x.filter(x => x.date.startsWith(m))), ad = d.s.filter(s => s.adm && s.date.startsWith(m)).reduce((a, s) => a + +s.adm, 0); o.mo.push([...V, mn(m), d.s.filter(s => s.date.slice(0, 7) <= m).length, col, ad, sal, ex, col - sal - ex]) });
+                [...ms].filter(Boolean).sort().forEach(m => { const col = sum(d.f.filter(f => f.month == m)), sal = sum(d.p.filter(p => p.month == m)), ex = sum(d.x.filter(x => x.date.startsWith(m))), ad = d.s.filter(s => s.adm && s.date.startsWith(m)).reduce((a, s) => a + +s.adm, 0); o.mo.push([...V, mn(m), d.s.filter(s => live(s, m)).length, col, ad, sal, ex, col - sal - ex]) });
                 const fc = sum(d.f.filter(f => xin(f.month))), sl = sum(d.p.filter(p => xin(p.month))), exs = sum(dx), adm = sts.filter(s => s.adm && (XP == 'a' || s.date.startsWith(CM))).reduce((a, s) => a + +s.adm, 0);
                 o.ds.push([DEPTS[k], sts.length, fc, adm, sl, exs, fc - sl - exs])
             });
@@ -1437,7 +1473,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             const d = $('#tad').value || tatD; tatD = d;
             $('#tdl').innerHTML = TB(['Teacher', 'Duty Time', 'Status', 'Arrived', 'Left', 'Counted From', 'Hours', 'Late (min)', ''], db.t.filter(t => !t.jd || t.jd <= d).map(t => {
                 const r = (db.ta[d] || {})[t.id], c = tDay(t, r), st = !r ? ['Not marked', 'lv'] : r.st == 'A' ? ['Absent', 'no'] : r.st == 'L' ? ['Leave', 'lv'] : ['Present', 'ok'], ok = c.eff != null;
-                return `<tr><td>${esc(t.name)}</td><td>${duty(t)}</td><td><span class="tag ${st[1]}">${st[0]}</span></td><td>${tt12(r && r.in)}</td><td>${tt12(r && r.out)}</td><td>${ok ? t12(c.eff) : '-'}</td><td>${ok ? fh(c.mins) : '-'}</td><td>${ok ? c.late : '-'}</td><td class="np"><button class="btn k s" onclick="tatEdit(${t.id})">Mark / Edit</button></td></tr>`
+                return `<tr><td>${esc(t.name)}</td><td>${duty(t)}</td><td><span class="tag ${st[1]}">${st[0]}</span></td><td>${tt12(r && r.in)}</td><td>${tt12(r && r.out)}</td><td>${ok ? t12(c.eff) : '-'}</td><td>${ok ? fh(c.mins) : '-'}</td><td>${ok ? c.late : '-'}</td><td class="np">${r && !canMod() ? '<small>Locked</small>' : `<button class="btn k s" onclick="tatEdit(${t.id})">Mark / Edit</button>`}</td></tr>`
             }), 'No teachers added yet. Add them in Teachers & Payroll.')
         }
         function tatSum() {
@@ -1454,9 +1490,9 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         }
         function tatSave(id) {
             const st = $('#tes').value, i = $('#tei').value, o = $('#teo').value; if (st == 'P' && !i) return alert('Please enter the arrival time.');
-            db.ta[tatD] = db.ta[tatD] || {}; db.ta[tatD][id] = st == 'P' ? { st, in: i, ...(o ? { out: o } : {}), m: 1 } : { st, m: 1 }; save(); closeM(); PG.tat()
+            if (!canMod() && (db.ta[tatD] || {})[id]) return deny(); db.ta[tatD] = db.ta[tatD] || {}; db.ta[tatD][id] = st == 'P' ? { st, in: i, ...(o ? { out: o } : {}), m: 1 } : { st, m: 1 }; save(); closeM(); PG.tat()
         }
-        function tatClear(id) { if (db.ta[tatD]) delete db.ta[tatD][id]; save(); closeM(); PG.tat() }
+        function tatClear(id) { if (!canMod()) return deny(); if (db.ta[tatD]) delete db.ta[tatD][id]; save(); closeM(); PG.tat() }
         PG.my = () => {
             if (!ME.length) { $('#main').innerHTML = `<h2>My Attendance & Salary</h2><div class="card"><p>Your login is not linked to a teacher profile yet. Please ask the admin to open <b>Teachers & Payroll</b> and enter your login email (<b>${esc(USER)}</b>) in your teacher profile.</p></div>`; return }
             $('#main').innerHTML = `<h2>My Attendance & Salary<small>${mLong(CM)} | ${GRACE} minute late relief</small></h2>` + ME.map(me => {
@@ -1485,7 +1521,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         }
         function oneSave() {
             const s = stu($('#os').value); if (!s) return alert('Please select a student.');
-            const d = $('#od').value, k = d + '|' + s.batch; db.a[k] = { ...(db.a[k] || {}), [s.id]: $('#ov').value }; save(); oneHist(); alert('Attendance saved for ' + s.name + '.')
+            const d = $('#od').value, k = d + '|' + s.batch; if (ROLE == 'admin' && (db.a[k] || {})[s.id]) return alert('This attendance is already saved. Only the Super Admin can change it.'); db.a[k] = { ...(db.a[k] || {}), [s.id]: $('#ov').value }; save(); oneHist(); alert('Attendance saved for ' + s.name + '.')
         }
         function oneHist() {
             const s = stu($('#os').value); if (!s) { $('#oh').innerHTML = ''; return }
@@ -1505,15 +1541,15 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         function ttList() {
             const l = tsts().filter(t => t.date.startsWith(CM));
             $('#tc').innerHTML = `<div class="card"><h3>Create a New Test</h3><div class="grid">${F('Test Name', 'ttn', 'text', '', 'placeholder="e.g. Monthly Test 1"')}${S(BT, 'ttc', BO)}${S('Subject', 'tts', COURSES)}${F('Date', 'ttd', 'date', dIn(CM))}${F('Total Marks', 'ttm', 'number', '100', 'min="1"')}</div><div class="btns"><button class="btn" onclick="ttNew()">Create Test & Enter Marks</button></div></div>
- <div class="card"><h3>Tests - ${mLong(CM)}</h3>${TB(['Date', 'Test', BN, 'Subject', 'Total', 'Marks Entered', 'Class Average', ''], l.map(t => { const st = tStat(t); return `<tr><td>${t.date}</td><td>${esc(t.name)}</td><td>${bl(t.cls)}</td><td>${esc(t.sub)}</td><td>${t.tm}</td><td>${st.n}</td><td>${st.n ? st.avg + '%' : '-'}</td><td class="np"><button class="btn y s" onclick="ttMarks('${t.id}')">Enter Marks</button> <button class="btn k s" onclick="ttSheet('${t.id}')">Result Sheet</button> <button class="btn s" onclick="ttDel('${t.id}')">Delete</button></td></tr>` }), 'No tests created in this month.')}</div>`
+ <div class="card"><h3>Tests - ${mLong(CM)}</h3>${TB(['Date', 'Test', BN, 'Subject', 'Total', 'Marks Entered', 'Class Average', ''], l.map(t => { const st = tStat(t); return `<tr><td>${t.date}</td><td>${esc(t.name)}</td><td>${bl(t.cls)}</td><td>${esc(t.sub)}</td><td>${t.tm}</td><td>${st.n}</td><td>${st.n ? st.avg + '%' : '-'}</td><td class="np"><button class="btn y s" onclick="ttMarks('${t.id}')">Enter Marks</button> <button class="btn k s" onclick="ttSheet('${t.id}')">Result Sheet</button> ${canMod() ? `<button class="btn s" onclick="ttDel('${t.id}')">Delete</button>` : ''}</td></tr>` }), 'No tests created in this month.')}</div>`
         }
         function ttNew() {
             const n = $('#ttn').value.trim(), tm = +$('#ttm').value; if (!n || !(tm > 0)) return alert('Please enter the test name and total marks.');
             const id = 'T' + Date.now(); db.tests[id] = { id, name: n, cls: $('#ttc').value, sub: $('#tts').value, date: $('#ttd').value, tm, m: {}, by: USER }; save(); ttMarks(id)
         }
-        function ttDel(id) { if (confirm('Delete this test and its marks?')) { db.tests[id].del = true; save(); PG.tst() } }
+        function ttDel(id) { if (!canMod()) return deny(); if (confirm('Delete this test and its marks?')) { db.tests[id].del = true; save(); PG.tst() } }
         function ttMarks(id) {
-            ttEd = true; const t = db.tests[id], l = db.s.filter(s => s.batch == t.cls && s.date <= t.date);
+            ttEd = true; const t = db.tests[id], l = db.s.filter(s => s.batch == t.cls && s.date <= t.date && (!s.end || t.date.slice(0, 7) < s.end));
             $('#tc').innerHTML = `<div class="card"><h3>${esc(t.name)} - ${esc(t.sub)} - ${bl(t.cls)} - ${t.date} (Total ${t.tm})</h3>` + TB(['ID', 'Student', 'Marks (out of ' + t.tm + ')'], l.map(s => `<tr><td>${sid(s)}</td><td>${esc(s.name)}</td><td><input type="number" class="mk" data-i="${s.id}" min="0" max="${t.tm}" step="0.5" value="${hasM((t.m || {})[s.id]) ? t.m[s.id] : ''}" style="width:110px"></td></tr>`), 'No students in this class yet.') + `<p><small>Leave blank if the student was absent.</small></p><div class="btns"><button class="btn" onclick="ttSave('${id}')">Save Marks</button><button class="btn y" onclick="ttSheet('${id}')">Result Sheet (Print / PDF)</button><button class="btn k" onclick="PG.tst()">Back</button></div></div>`
         }
         function ttSave(id) {
@@ -1522,7 +1558,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             t.m = t.m || {}; ins.forEach(i => t.m[i.dataset.i] = i.value.trim() === '' ? '' : +i.value); save(); alert('Marks saved.'); ttMarks(id)
         }
         function ttSheet(id) {
-            const t = db.tests[id], st = tStat(t), l = db.s.filter(s => s.batch == t.cls && s.date <= t.date).map(s => ({ s, ok: hasM((t.m || {})[s.id]), v: +(t.m || {})[s.id] }));
+            const t = db.tests[id], st = tStat(t), l = db.s.filter(s => s.batch == t.cls && s.date <= t.date && (!s.end || t.date.slice(0, 7) < s.end)).map(s => ({ s, ok: hasM((t.m || {})[s.id]), v: +(t.m || {})[s.id] }));
             l.sort((a, b) => (b.ok - a.ok) || (b.v - a.v) || a.s.name.localeCompare(b.s.name));
             modal(`<div style="width:680px;max-width:100%"><div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>${esc(DEPT)}</small></div><div><b>CLASS RESULT SHEET</b><small>Printed: ${today()}</small></div></div><div class="bd"><div class="kv k3" style="margin-top:14px"><div><span>Test</span><b>${esc(t.name)}</b></div><div><span>Subject</span><b>${esc(t.sub)}</b></div><div><span>${BT}</span><b>${bl(t.cls)}</b></div><div><span>Date</span><b>${t.date}</b></div><div><span>Total Marks</span><b>${t.tm}</b></div><div><span>Appeared</span><b>${st.n} of ${l.length}</b></div></div>
  ${TB(['Position', 'ID', 'Student', 'Marks', 'Total', '%', 'Grade'], l.map(x => x.ok ? `<tr><td><b>${st.sorted.indexOf(x.v) + 1}</b></td><td>${sid(x.s)}</td><td>${esc(x.s.name)}</td><td>${x.v}</td><td>${t.tm}</td><td>${r1(x.v * 100 / t.tm)}%</td><td><b>${GR(x.v * 100 / t.tm)}</b></td></tr>` : `<tr><td>-</td><td>${sid(x.s)}</td><td>${esc(x.s.name)}</td><td colspan="4">Absent / not entered</td></tr>`), 'No students.')}
