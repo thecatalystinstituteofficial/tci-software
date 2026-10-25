@@ -925,7 +925,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             coach: { b: ['Class 1 - 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'], c: ['All Subjects', 'Maths', 'Science', 'English', 'Urdu', 'Other'], e: ['Books & Stationery', 'Maintenance', 'Electricity', 'Internet', 'Rent', 'Marketing', 'Other'] },
             eng: { b: ['6:00 - 8:00 PM'], c: ['Spoken English', 'IELTS', 'English Grammar', 'Business English', 'Kids English', 'Other'], e: ['Books & Materials', 'Audio / Visual Equipment', 'Electricity', 'Internet', 'Rent', 'Marketing', 'Other'] }
         };
-        const DEF = () => ({ s: [], a: {}, f: [], t: [], p: [], x: [], rp: {}, n: 1, t_n: 1 });
+        const DEF = () => ({ s: [], a: {}, f: [], t: [], p: [], x: [], rp: {}, ta: {}, tests: {}, n: 1, t_n: 1 });
         let db, DEPT, B, BO, BA, COURSES, EXC, BN, BT, BNP, BTP;
         const bl = b => { if (!/^\d+-\d+$/.test(b)) return b; const [a, c] = b.split('-'); return a + ':00 - ' + c + ':00 PM' };
         function applyCfg() { const c = db.cfg; B = c.b; BO = B.map(b => [b, bl(b)]); const co = root.cur == 'coach'; BN = co ? 'Class' : 'Batch'; BT = co ? 'Class' : 'Batch Timing'; BNP = co ? 'Classes' : 'Batches'; BTP = co ? 'Classes' : 'Batch Timings'; BA = [['', 'All ' + BNP], ...BO]; COURSES = c.c; EXC = c.e }
@@ -960,10 +960,11 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         const S = (l, id, o, sel = '', x = '') => `<div><label>${l}</label><select id="${id}" ${x}>${o.map(a => { const [v, t] = Array.isArray(a) ? a : [a, a]; return `<option value="${esc(v)}" ${v == sel ? 'selected' : ''}>${esc(t)}</option>` }).join('')}</select></div>`;
         const TB = (h, r, e = 'No records found.') => `<div class="tw"><table><tr>${h.map(x => `<th>${x}</th>`).join('')}</tr>${r.length ? r.join('') : `<tr><td colspan="${h.length}">${e}</td></tr>`}</table></div>`;
         const months = (a, b) => { const r = []; let [y, m] = a.slice(0, 7).split('-').map(Number); const e = b.slice(0, 7); while (r.length < 48) { const s = y + '-' + String(m).padStart(2, '0'); if (s > e) break; r.push(s); if (++m > 12) { m = 1; y++ } } return r };
-        const NAV = [['dash', 'Dashboard'], ['stu', 'Admissions'], ['att', 'Attendance'], ['fee', 'Fee Collection'], ['tch', 'Teachers & Payroll'], ['exp', 'Expenses'], ['rep', 'Student Report'], ['fin', 'Finance Report'], ['set', 'Department Settings'], ['ifin', 'Institute Finance'], ['xl', 'Export to Excel']];
-        const buildNav = () => { $('#nav').innerHTML = (isT() ? NAV.filter(([k]) => k == 'att' || k == 'rep') : NAV).map(([k, v]) => (k == 'ifin' ? '<div class="nsep">Whole Institute</div>' : '') + `<button data-k="${k}" onclick="go('${k}')">${v}</button>`).join('') };
+        const NAV = [['dash', 'Dashboard'], ['stu', 'Admissions'], ['att', 'Attendance'], ['my', 'My Attendance & Salary'], ['fee', 'Fee Collection'], ['tch', 'Teachers & Payroll'], ['tat', 'Teacher Attendance'], ['exp', 'Expenses'], ['rep', 'Student Report'], ['tst', 'Test Reports'], ['fin', 'Finance Report'], ['set', 'Department Settings'], ['ifin', 'Institute Finance'], ['xl', 'Export to Excel']];
+        const navOk = k => isT() ? ['att', 'my', 'rep', 'tst'].includes(k) && (k != 'tst' || root.cur == 'coach') : k != 'my' && (k != 'tst' || root.cur == 'coach');
+        const buildNav = () => { $('#nav').innerHTML = NAV.filter(([k]) => navOk(k)).map(([k, v]) => (k == 'ifin' ? '<div class="nsep">Whole Institute</div>' : '') + `<button data-k="${k}" class="${k == CK ? 'on' : ''}" onclick="go('${k}')">${v}</button>`).join('') };
         const PG = {};
-        function go(k) { if (isT() && k != 'att' && k != 'rep') k = 'att'; if (!PG[k]) k = 'dash'; CK = k; bar(); document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.k == k)); PG[k](); scrollTo(0, 0) }
+        function go(k) { if (!navOk(k)) k = isT() ? 'my' : 'dash'; if (!PG[k]) k = 'dash'; CK = k; bar(); document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.k == k)); PG[k](); scrollTo(0, 0) }
         let PT = '';
         function modal(h, pr = true) { PT = ''; $('#mbox').innerHTML = `<div id="pm">${h}</div><div class="btns np" style="justify-content:center">${pr ? '<button class="btn" onclick="printEl(\'#pm\')">Print / Save as PDF</button>' : ''}<button class="btn k" onclick="closeM()">Close</button></div>`; $('#modal').style.display = 'flex' }
         const closeM = () => { PT = ''; $('#modal').style.display = 'none' }; $('#modal').onclick = e => { if (e.target.id == 'modal') closeM() };
@@ -1035,7 +1036,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 
         /* ATTENDANCE */
         let atab = 'm';
-        PG.att = () => { $('#main').innerHTML = `<h2>Attendance</h2><div class="tabs"><button class="${atab == 'm' ? 'on' : ''}" onclick="atab='m';PG.att()">Mark Attendance</button><button class="${atab == 'r' ? 'on' : ''}" onclick="atab='r';PG.att()">Attendance Records</button><button class="${atab == 'g' ? 'on' : ''}" onclick="atab='g';PG.att()">Daily Register</button></div><div id="ac"></div>`; atab == 'm' ? attMark() : atab == 'g' ? attReg() : attRec() };
+        PG.att = () => { $('#main').innerHTML = `<h2>Attendance</h2><div class="tabs"><button class="${atab == 'm' ? 'on' : ''}" onclick="atab='m';PG.att()">Mark Attendance</button><button class="${atab == 's' ? 'on' : ''}" onclick="atab='s';PG.att()">Single Student</button><button class="${atab == 'r' ? 'on' : ''}" onclick="atab='r';PG.att()">Attendance Records</button><button class="${atab == 'g' ? 'on' : ''}" onclick="atab='g';PG.att()">Daily Register</button></div><div id="ac"></div>`; atab == 'm' ? attMark() : atab == 's' ? attOne() : atab == 'g' ? attReg() : attRec() };
         function attMark() { $('#ac').innerHTML = `<div class="card"><div class="row">${F('Date', 'ad', 'date', dIn(CM), `onchange="loadAtt()" min="${CM}-01" max="${mEnd(CM)}"`)}${S(BT, 'ab', BO, '', 'onchange="loadAtt()"')}${F('Search Student', 'as', 'text', '', 'placeholder="Filter by name" oninput="srchA()"')}</div><div id="al"></div></div>`; loadAtt() }
         function loadAtt() {
             const d = $('#ad').value, b = $('#ab').value, sv = db.a[d + '|' + b] || {}, l = attS(b, d);
@@ -1122,24 +1123,25 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         /* TEACHERS & PAYROLL */
         PG.tch = () => {
             $('#main').innerHTML = `<h2>Teachers & Payroll</h2><div class="card"><form onsubmit="saveT(event)"><input type="hidden" id="tid"><div class="grid">` +
-                F('Full Name', 'tn', 'text', '', 'required') + F('Subject / Designation', 'tr', 'text', '', 'required') + F('Qualification', 'tq') + F('Phone', 'tp', 'tel') + F('Joining Date', 'tj', 'date', dIn(CM)) + F('Monthly Salary (Rs)', 'ts', 'number', '', 'required min="0"') +
+                F('Full Name', 'tn', 'text', '', 'required') + F('Subject / Designation', 'tr', 'text', '', 'required') + F('Qualification', 'tq') + F('Phone', 'tp', 'tel') + F('Joining Date', 'tj', 'date', dIn(CM)) + F('Fixed Monthly Salary (Rs)', 'ts', 'number', '', 'min="0"') + S('Pay Type', 'tpt', [['f', 'Fixed monthly salary'], ['h', 'Hourly (rate x hours worked)']], 'f') + F('Hourly Rate (Rs per hour)', 'trt', 'number', '', 'min="0"') + F('Duty Start Time', 'tds', 'time') + F('Duty End Time', 'tde', 'time') + F("Login Email (teacher's own login)", 'tem', 'email', '', 'placeholder="e.g. adeel@tci.com"') +
                 `</div><label style="margin-top:12px">Assigned ${BNP}</label>${B.map(b => `<label class="ck"><input type="checkbox" class="tb" value="${esc(b)}">${bl(b)}</label>`).join('')}<div class="btns"><button class="btn">Save Teacher</button><button type="button" class="btn k" onclick="PG.tch()">Reset</button></div></form></div>
  <div class="card"><div class="row">${F('Payroll Month', 'sm', 'month', CM, 'onchange="listT()"')}<button class="btn k" onclick="printEl('#tw')">Print / PDF</button></div><div id="tw">${PH('Teacher Payroll')}<div id="tl"></div></div></div>
  <div class="card"><h3>Salary History</h3>${TB(['Date', 'Teacher', 'Month', 'Amount', ''], db.p.slice().reverse().map(p => { const t = db.t.find(x => x.id == p.tid) || { name: '(deleted)' }; return `<tr><td>${p.date}</td><td>${esc(t.name)}</td><td>${mn(p.month)}</td><td>${rs(p.amt)}</td><td><button class="btn s" onclick="delP(${p.id})">Delete</button></td></tr>` }))}</div>`; listT()
         };
         function saveT(e) {
-            e.preventDefault(); const id = $('#tid').value, o = { name: $('#tn').value, role: $('#tr').value, q: $('#tq').value, phone: $('#tp').value, jd: $('#tj').value, sal: $('#ts').value, bt: [...document.querySelectorAll('.tb:checked')].map(c => c.value) };
+            e.preventDefault(); const id = $('#tid').value, o = { name: $('#tn').value, role: $('#tr').value, q: $('#tq').value, phone: $('#tp').value, jd: $('#tj').value, sal: $('#ts').value, pt: $('#tpt').value, rate: $('#trt').value, ds: $('#tds').value, de: $('#tde').value, email: $('#tem').value.trim().toLowerCase(), bt: [...document.querySelectorAll('.tb:checked')].map(c => c.value) };
+            if (o.pt == 'h' && (!(+o.rate > 0) || !o.ds || !o.de)) return alert('Hourly pay needs an hourly rate, duty start time and duty end time.'); if (o.pt != 'h' && o.sal === '') return alert('Please enter the fixed monthly salary.');
             if (id) Object.assign(db.t.find(t => t.id == id), o); else db.t.push({ id: db.t_n++, ...o }); save(); PG.tch()
         }
         function listT() {
-            const m = $('#sm').value; $('#tl').innerHTML = TB(['Name', 'Subject', 'Qualification', BNP, 'Salary', 'Status', ''], db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= m).map(t => {
+            const m = $('#sm').value; $('#tl').innerHTML = TB(['Name', 'Subject', 'Qualification', BNP, 'Pay Type', 'Salary / Rate', 'Earned (' + mn(m) + ')', 'Status', ''], db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= m).map(t => {
                 const p = db.p.find(x => x.tid == t.id && x.month == m);
-                return `<tr><td>${esc(t.name)}</td><td>${esc(t.role)}</td><td>${esc(t.q || '-')}</td><td>${(t.bt || []).join(', ') || '-'}</td><td>${rs(t.sal)}</td><td><span class="tag ${p ? 'ok' : 'no'}">${p ? 'Paid' : 'Due'}</span></td>
+                return `<tr><td>${esc(t.name)}</td><td>${esc(t.role)}</td><td>${esc(t.q || '-')}</td><td>${(t.bt || []).join(', ') || '-'}</td><td>${t.pt == 'h' ? 'Hourly' : 'Fixed'}</td><td>${t.pt == 'h' ? rs(t.rate) + ' / hr' : rs(t.sal)}</td><td><b>${rs(tPay(t, m).earned)}</b></td><td><span class="tag ${p ? 'ok' : 'no'}">${p ? 'Paid' : 'Due'}</span></td>
  <td class="np">${p ? '' : `<button class="btn y s" onclick="payT(${t.id})">Pay</button> `}<button class="btn k s" onclick="profT(${t.id})">Profile</button> <button class="btn k s" onclick="editT(${t.id})">Edit</button> <button class="btn s" onclick="delT(${t.id})">Delete</button></td></tr>`
             }), 'No teachers added yet.')
         }
-        function editT(id) { const t = db.t.find(x => x.id == id); scrollTo(0, 0); $('#tid').value = id;[['tn', 'name'], ['tr', 'role'], ['tq', 'q'], ['tp', 'phone'], ['tj', 'jd'], ['ts', 'sal']].forEach(([a, b]) => $('#' + a).value = t[b] || ''); document.querySelectorAll('.tb').forEach(c => c.checked = (t.bt || []).includes(c.value)) }
-        function payT(id) { const t = db.t.find(x => x.id == id); modal(`<div style="width:300px"><h3 style="margin-top:0">Pay Salary - ${esc(t.name)}</h3><p>Month: <b>${mn($('#sm').value)}</b></p>${F('Amount (Rs)', 'pa', 'number', t.sal)}<div class="btns"><button class="btn" onclick="confirmP(${id})">Confirm Payment</button></div></div>`, false) }
+        function editT(id) { const t = db.t.find(x => x.id == id); scrollTo(0, 0); $('#tid').value = id;[['tn', 'name'], ['tr', 'role'], ['tq', 'q'], ['tp', 'phone'], ['tj', 'jd'], ['ts', 'sal'], ['tpt', 'pt'], ['trt', 'rate'], ['tds', 'ds'], ['tde', 'de'], ['tem', 'email']].forEach(([a, b]) => $('#' + a).value = t[b] || ''); if (!$('#tpt').value) $('#tpt').value = 'f'; document.querySelectorAll('.tb').forEach(c => c.checked = (t.bt || []).includes(c.value)) }
+        function payT(id) { const t = db.t.find(x => x.id == id); modal(`<div style="width:300px"><h3 style="margin-top:0">Pay Salary - ${esc(t.name)}</h3><p>Month: <b>${mn($('#sm').value)}</b></p>${F('Amount (Rs)', 'pa', 'number', tPay(t, $('#sm').value).earned)}<div class="btns"><button class="btn" onclick="confirmP(${id})">Confirm Payment</button></div></div>`, false) }
         function confirmP(id) { db.p.push({ id: Date.now(), tid: id, month: $('#sm').value, amt: +$('#pa').value || 0, date: today() }); save(); closeM(); PG.tch() }
         function delP(id) { if (confirm('Delete this salary record?')) { db.p = db.p.filter(p => p.id != id); save(); PG.tch() } }
         function delT(id) { if (confirm('Delete this teacher record?')) { db.t = db.t.filter(t => t.id != id); save(); PG.tch() } }
@@ -1205,7 +1207,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         }
 
         /* DEPARTMENT SWITCHER */
-        function deptSel() { $('#dsel').innerHTML = DK.map(k => `<option value="${k}" ${k == root.cur ? 'selected' : ''}>${DEPTS[k]}</option>`).join(''); $('#dn').textContent = DEPT }
+        function deptSel() { buildNav(); $('#dsel').innerHTML = DK.map(k => `<option value="${k}" ${k == root.cur ? 'selected' : ''}>${DEPTS[k]}</option>`).join(''); $('#dn').textContent = DEPT }
         function setDept(k) { root.cur = k; db = root.depts[k]; DEPT = DEPTS[k]; applyCfg(); save(); deptSel(); go(CK == 'ifin' ? 'dash' : CK) }
 
         /* DEPARTMENT SETTINGS */
@@ -1401,6 +1403,153 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         };
 
 
+        /* STAFF (TEACHER) ATTENDANCE + HOURLY PAY */
+        const GRACE = 15;
+        let ME = [], tatD = null, ttab = 'l', ttEd = false;
+        const tmin = h => { if (!h) return null; const [a, b] = String(h).split(':').map(Number); return a * 60 + b };
+        const fh = m => Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+        const t12 = m => { const h = Math.floor(m / 60) % 24; return (h % 12 || 12) + ':' + String(m % 60).padStart(2, '0') + ' ' + (h >= 12 ? 'PM' : 'AM') };
+        const tt12 = h => h ? t12(tmin(h)) : '-';
+        function tDay(t, r) {
+            const z = { mins: 0, late: 0, eff: null, end: null };
+            if (!r || r.st == 'A' || r.st == 'L' || !r.in) return z;
+            const ds = tmin(t.ds), de = tmin(t.de), arr = tmin(r.in); if (ds == null || arr == null) return z;
+            const eff = Math.max(ds, arr - GRACE), out = tmin(r.out); let end = de; if (out != null) end = end == null ? out : Math.min(out, end);
+            return { eff, end, late: Math.max(0, arr - GRACE - ds), mins: end == null ? 0 : Math.max(0, end - eff) }
+        }
+        function tPay(t, m, ta = db.ta) {
+            let days = 0, mins = 0, late = 0, ab = 0, lv = 0;
+            for (const d in ta) {
+                if (!d.startsWith(m)) continue; const r = (ta[d] || {})[t.id]; if (!r) continue;
+                if (r.st == 'A') ab++; else if (r.st == 'L') lv++; else if (r.in) { const c = tDay(t, r); days++; mins += c.mins; late += c.late }
+            }
+            return { days, mins, late, ab, lv, earned: t.pt == 'h' ? Math.round(mins / 60 * (+t.rate || 0)) : (+t.sal || 0) }
+        }
+        const duty = t => t.ds ? t12(tmin(t.ds)) + ' - ' + (t.de ? t12(tmin(t.de)) : '?') : '<small>not set</small>';
+        PG.tat = () => {
+            tatD = tatD && tatD.startsWith(CM) ? tatD : dIn(CM);
+            $('#main').innerHTML = `<h2>Teacher Attendance<small>${mLong(CM)} | ${GRACE} minute late relief | pay is calculated from hours</small></h2>
+ <div class="card"><div class="row">${F('Date', 'tad', 'date', tatD, `onchange="tatList()" min="${CM}-01" max="${mEnd(CM)}"`)}<button class="btn k" onclick="printEl('#tdw')">Print / PDF</button></div><div id="tdw">${PH('Teacher Attendance')}<div id="tdl"></div></div></div>
+ <div class="card"><h3>Monthly Hours & Pay - ${mLong(CM)}</h3><div class="btns" style="margin:0 0 10px"><button class="btn k" onclick="printEl('#tws')">Print / PDF</button></div><div id="tws">${PH('Teacher Hours & Pay - ' + mLong(CM))}<div id="tms"></div></div></div>`;
+            tatList(); tatSum()
+        };
+        function tatList() {
+            const d = $('#tad').value || tatD; tatD = d;
+            $('#tdl').innerHTML = TB(['Teacher', 'Duty Time', 'Status', 'Arrived', 'Left', 'Counted From', 'Hours', 'Late (min)', ''], db.t.filter(t => !t.jd || t.jd <= d).map(t => {
+                const r = (db.ta[d] || {})[t.id], c = tDay(t, r), st = !r ? ['Not marked', 'lv'] : r.st == 'A' ? ['Absent', 'no'] : r.st == 'L' ? ['Leave', 'lv'] : ['Present', 'ok'], ok = c.eff != null;
+                return `<tr><td>${esc(t.name)}</td><td>${duty(t)}</td><td><span class="tag ${st[1]}">${st[0]}</span></td><td>${tt12(r && r.in)}</td><td>${tt12(r && r.out)}</td><td>${ok ? t12(c.eff) : '-'}</td><td>${ok ? fh(c.mins) : '-'}</td><td>${ok ? c.late : '-'}</td><td class="np"><button class="btn k s" onclick="tatEdit(${t.id})">Mark / Edit</button></td></tr>`
+            }), 'No teachers added yet. Add them in Teachers & Payroll.')
+        }
+        function tatSum() {
+            let te = 0, tp = 0;
+            const rows = db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= CM).map(t => {
+                const c = tPay(t, CM), paid = sum(db.p.filter(p => p.tid == t.id && p.month == CM)); te += c.earned; tp += paid;
+                return `<tr><td>${esc(t.name)}</td><td>${t.pt == 'h' ? 'Hourly ' + rs(t.rate) : 'Fixed'}</td><td>${c.days}</td><td>${c.ab}</td><td>${c.lv}</td><td>${fh(c.mins)}</td><td>${c.late}</td><td><b>${rs(c.earned)}</b></td><td>${rs(paid)}</td><td>${rs(c.earned - paid)}</td></tr>`
+            });
+            $('#tms').innerHTML = TB(['Teacher', 'Pay Type', 'Days Present', 'Absent', 'Leave', 'Hours Worked', 'Late (min)', 'Earned', 'Paid', 'Due'], rows, 'No teachers.') + `<p><b>Total earned: ${rs(te)}</b> | Paid: ${rs(tp)} | Due: ${rs(te - tp)}</p><p><small>Counted start time = arrival time minus ${GRACE} minutes (but never before duty start). Fixed-salary teachers always earn their fixed salary.</small></p>`
+        }
+        function tatEdit(id) {
+            const t = db.t.find(x => x.id == id), r = (db.ta[tatD] || {})[id] || {};
+            modal(`<div style="width:320px"><h3 style="margin-top:0">${esc(t.name)} - ${tatD}</h3>${S('Status', 'tes', [['P', 'Present'], ['A', 'Absent'], ['L', 'Leave']], r.st || 'P')}${F('Arrival Time', 'tei', 'time', r.in || '')}${F('Leaving Time (optional)', 'teo', 'time', r.out || '')}<div class="btns"><button class="btn" onclick="tatSave(${id})">Save</button>${r.st ? `<button class="btn k" onclick="tatClear(${id})">Clear</button>` : ''}</div></div>`, false)
+        }
+        function tatSave(id) {
+            const st = $('#tes').value, i = $('#tei').value, o = $('#teo').value; if (st == 'P' && !i) return alert('Please enter the arrival time.');
+            db.ta[tatD] = db.ta[tatD] || {}; db.ta[tatD][id] = st == 'P' ? { st, in: i, ...(o ? { out: o } : {}), m: 1 } : { st, m: 1 }; save(); closeM(); PG.tat()
+        }
+        function tatClear(id) { if (db.ta[tatD]) delete db.ta[tatD][id]; save(); closeM(); PG.tat() }
+        PG.my = () => {
+            if (!ME.length) { $('#main').innerHTML = `<h2>My Attendance & Salary</h2><div class="card"><p>Your login is not linked to a teacher profile yet. Please ask the admin to open <b>Teachers & Payroll</b> and enter your login email (<b>${esc(USER)}</b>) in your teacher profile.</p></div>`; return }
+            $('#main').innerHTML = `<h2>My Attendance & Salary<small>${mLong(CM)} | ${GRACE} minute late relief</small></h2>` + ME.map(me => {
+                const t = me.t, r = (me.ta[today()] || {})[t.id], pay = tPay(t, CM, me.ta), days = Object.keys(me.ta).filter(d => d.startsWith(CM)).sort().reverse(), pm = me.p.filter(p => p.month == CM);
+                const tag = r && r.in && (r.st || 'P') == 'P' ? `<span class="tag ok">Arrived ${tt12(r.in)}</span>` + (r.out ? ` <span class="tag lv">Left ${tt12(r.out)}</span>` : '') : r && r.st ? `<span class="tag no">${SL[r.st]}</span>` : '<span class="tag lv">Not checked in yet</span>';
+                return `<div class="card"><h3>${esc(t.name)} <small>${DEPTS[me.k]}</small></h3><p>Duty time: <b>${duty(t)}</b> &nbsp;|&nbsp; Pay: <b>${t.pt == 'h' ? rs(t.rate) + ' per hour' : rs(t.sal) + ' fixed per month'}</b></p><p>Today (${today()}): ${tag}</p>
+ <div class="btns"><button class="btn" onclick="myCheck('in')" ${r && r.in && (r.st || 'P') == 'P' ? 'disabled' : ''}>Check In</button><button class="btn y" onclick="myCheck('out')" ${r && r.in ? '' : 'disabled'}>Check Out</button></div>
+ <p><small>Arrive within ${GRACE} minutes of your duty start and nothing is counted late. After that only the minutes beyond ${GRACE} are counted. The time is taken from the server clock.</small></p></div>
+ <div class="card"><h3>${mLong(CM)} - My Summary</h3><p>Days present: <b>${pay.days}</b> | Hours: <b>${fh(pay.mins)}</b> | Late: <b>${pay.late} min</b> | ${t.pt == 'h' ? 'Earned so far' : 'Monthly salary'}: <b>${rs(pay.earned)}</b> | Paid this month: <b>${rs(sum(pm))}</b></p>
+ ${TB(['Date', 'Arrived', 'Left', 'Counted From', 'Hours', 'Late (min)'], days.map(d => { const x = me.ta[d][t.id], c = tDay(t, x); return `<tr><td>${d}</td><td>${x.in ? tt12(x.in) : SL[x.st] || '-'}</td><td>${tt12(x.out)}</td><td>${c.eff != null ? t12(c.eff) : '-'}</td><td>${c.eff != null ? fh(c.mins) : '-'}</td><td>${c.eff != null ? c.late : '-'}</td></tr>` }), 'No attendance this month yet.')}
+ <h4>Salary Payments Received</h4>${TB(['Month', 'Date', 'Amount'], me.p.slice().reverse().map(p => `<tr><td>${mn(p.month)}</td><td>${p.date}</td><td>${rs(p.amt)}</td></tr>`), 'No payments yet.')}</div>`
+            }).join('')
+        };
+        async function myCheck(a) {
+            try {
+                const { data, error } = await sb.rpc('teacher_checkin', { p_action: a }); if (error) throw error;
+                if (!data || !data.length) return alert('Your login is not linked to a teacher profile.');
+                data.forEach(x => { const me = ME.find(m => m.k == x.k); if (me) (me.ta[x.d] = me.ta[x.d] || {})[x.tid] = x.e });
+                PG.my()
+            } catch (e) { alert('Could not save: ' + (e.message || e)) }
+        }
+
+        /* SINGLE-STUDENT ATTENDANCE */
+        function attOne() {
+            $('#ac').innerHTML = `<div class="card"><p>Mark attendance for <b>one student</b>. The rest of the ${BT.toLowerCase()} is not changed.</p><div class="row">${S('Student', 'os', [['', 'Select student'], ...enr().map(s => [s.id, sid(s) + ' - ' + s.name + ' (' + bl(s.batch) + ')'])], '', 'onchange="oneHist()"')}${F('Date', 'od', 'date', dIn(CM), `min="${CM}-01" max="${mEnd(CM)}"`)}${S('Status', 'ov', [['P', 'Present'], ['A', 'Absent'], ['L', 'Leave']], 'P')}<button class="btn" onclick="oneSave()">Save Attendance</button></div><div id="oh"></div></div>`
+        }
+        function oneSave() {
+            const s = stu($('#os').value); if (!s) return alert('Please select a student.');
+            const d = $('#od').value, k = d + '|' + s.batch; db.a[k] = { ...(db.a[k] || {}), [s.id]: $('#ov').value }; save(); oneHist(); alert('Attendance saved for ' + s.name + '.')
+        }
+        function oneHist() {
+            const s = stu($('#os').value); if (!s) { $('#oh').innerHTML = ''; return }
+            const rows = []; for (const k in db.a) { const [d, b] = k.split('|'), v = db.a[k][s.id]; if (v && d.startsWith(CM)) rows.push({ d, b, v }) }
+            rows.sort((x, y) => y.d.localeCompare(x.d)); $('#oh').innerHTML = `<h4>${esc(s.name)} - ${mLong(CM)}</h4>` + TB(['Date', BN, 'Status'], rows.map(r => `<tr><td>${r.d}</td><td>${bl(r.b)}</td><td><span class="tag ${SC[r.v]}">${SL[r.v]}</span></td></tr>`), 'No attendance saved for this student this month.')
+        }
+
+        /* TEST REPORTS (Coaching) */
+        const GR = p => p >= 90 ? 'A+' : p >= 80 ? 'A' : p >= 70 ? 'B' : p >= 60 ? 'C' : p >= 50 ? 'D' : p >= 40 ? 'E' : 'F';
+        const tsts = () => Object.values(db.tests || {}).filter(t => !t.del).sort((a, b) => b.date.localeCompare(a.date));
+        const hasM = v => v !== '' && v != null && !isNaN(v), r1 = x => Math.round(x * 10) / 10;
+        const tStat = t => { const v = Object.values(t.m || {}).filter(hasM).map(Number); return { n: v.length, avg: v.length ? r1(v.reduce((a, b) => a + b, 0) * 100 / v.length / t.tm) : 0, sorted: v.slice().sort((a, b) => b - a) } };
+        PG.tst = () => {
+            ttEd = false;
+            $('#main').innerHTML = `<h2>Test Reports<small>${esc(DEPT)} | tests, marks, result sheets and student test reports</small></h2><div class="tabs"><button class="${ttab == 'l' ? 'on' : ''}" onclick="ttab='l';PG.tst()">Tests & Marks</button><button class="${ttab == 'r' ? 'on' : ''}" onclick="ttab='r';PG.tst()">Student Test Report</button></div><div id="tc"></div>`; ttab == 'l' ? ttList() : ttRep()
+        };
+        function ttList() {
+            const l = tsts().filter(t => t.date.startsWith(CM));
+            $('#tc').innerHTML = `<div class="card"><h3>Create a New Test</h3><div class="grid">${F('Test Name', 'ttn', 'text', '', 'placeholder="e.g. Monthly Test 1"')}${S(BT, 'ttc', BO)}${S('Subject', 'tts', COURSES)}${F('Date', 'ttd', 'date', dIn(CM))}${F('Total Marks', 'ttm', 'number', '100', 'min="1"')}</div><div class="btns"><button class="btn" onclick="ttNew()">Create Test & Enter Marks</button></div></div>
+ <div class="card"><h3>Tests - ${mLong(CM)}</h3>${TB(['Date', 'Test', BN, 'Subject', 'Total', 'Marks Entered', 'Class Average', ''], l.map(t => { const st = tStat(t); return `<tr><td>${t.date}</td><td>${esc(t.name)}</td><td>${bl(t.cls)}</td><td>${esc(t.sub)}</td><td>${t.tm}</td><td>${st.n}</td><td>${st.n ? st.avg + '%' : '-'}</td><td class="np"><button class="btn y s" onclick="ttMarks('${t.id}')">Enter Marks</button> <button class="btn k s" onclick="ttSheet('${t.id}')">Result Sheet</button> <button class="btn s" onclick="ttDel('${t.id}')">Delete</button></td></tr>` }), 'No tests created in this month.')}</div>`
+        }
+        function ttNew() {
+            const n = $('#ttn').value.trim(), tm = +$('#ttm').value; if (!n || !(tm > 0)) return alert('Please enter the test name and total marks.');
+            const id = 'T' + Date.now(); db.tests[id] = { id, name: n, cls: $('#ttc').value, sub: $('#tts').value, date: $('#ttd').value, tm, m: {}, by: USER }; save(); ttMarks(id)
+        }
+        function ttDel(id) { if (confirm('Delete this test and its marks?')) { db.tests[id].del = true; save(); PG.tst() } }
+        function ttMarks(id) {
+            ttEd = true; const t = db.tests[id], l = db.s.filter(s => s.batch == t.cls && s.date <= t.date);
+            $('#tc').innerHTML = `<div class="card"><h3>${esc(t.name)} - ${esc(t.sub)} - ${bl(t.cls)} - ${t.date} (Total ${t.tm})</h3>` + TB(['ID', 'Student', 'Marks (out of ' + t.tm + ')'], l.map(s => `<tr><td>${sid(s)}</td><td>${esc(s.name)}</td><td><input type="number" class="mk" data-i="${s.id}" min="0" max="${t.tm}" step="0.5" value="${hasM((t.m || {})[s.id]) ? t.m[s.id] : ''}" style="width:110px"></td></tr>`), 'No students in this class yet.') + `<p><small>Leave blank if the student was absent.</small></p><div class="btns"><button class="btn" onclick="ttSave('${id}')">Save Marks</button><button class="btn y" onclick="ttSheet('${id}')">Result Sheet (Print / PDF)</button><button class="btn k" onclick="PG.tst()">Back</button></div></div>`
+        }
+        function ttSave(id) {
+            const t = db.tests[id], ins = [...document.querySelectorAll('.mk')], bad = ins.filter(i => i.value.trim() !== '' && !(+i.value >= 0 && +i.value <= t.tm));
+            if (bad.length) return alert(bad.length + ' mark(s) are invalid. Marks must be between 0 and ' + t.tm + '.');
+            t.m = t.m || {}; ins.forEach(i => t.m[i.dataset.i] = i.value.trim() === '' ? '' : +i.value); save(); alert('Marks saved.'); ttMarks(id)
+        }
+        function ttSheet(id) {
+            const t = db.tests[id], st = tStat(t), l = db.s.filter(s => s.batch == t.cls && s.date <= t.date).map(s => ({ s, ok: hasM((t.m || {})[s.id]), v: +(t.m || {})[s.id] }));
+            l.sort((a, b) => (b.ok - a.ok) || (b.v - a.v) || a.s.name.localeCompare(b.s.name));
+            modal(`<div style="width:680px;max-width:100%"><div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>${esc(DEPT)}</small></div><div><b>CLASS RESULT SHEET</b><small>Printed: ${today()}</small></div></div><div class="bd"><div class="kv k3" style="margin-top:14px"><div><span>Test</span><b>${esc(t.name)}</b></div><div><span>Subject</span><b>${esc(t.sub)}</b></div><div><span>${BT}</span><b>${bl(t.cls)}</b></div><div><span>Date</span><b>${t.date}</b></div><div><span>Total Marks</span><b>${t.tm}</b></div><div><span>Appeared</span><b>${st.n} of ${l.length}</b></div></div>
+ ${TB(['Position', 'ID', 'Student', 'Marks', 'Total', '%', 'Grade'], l.map(x => x.ok ? `<tr><td><b>${st.sorted.indexOf(x.v) + 1}</b></td><td>${sid(x.s)}</td><td>${esc(x.s.name)}</td><td>${x.v}</td><td>${t.tm}</td><td>${r1(x.v * 100 / t.tm)}%</td><td><b>${GR(x.v * 100 / t.tm)}</b></td></tr>` : `<tr><td>-</td><td>${sid(x.s)}</td><td>${esc(x.s.name)}</td><td colspan="4">Absent / not entered</td></tr>`), 'No students.')}
+ <p>Class average: <b>${st.avg}%</b> | Highest: <b>${st.n ? st.sorted[0] : '-'}</b> | Lowest: <b>${st.n ? st.sorted[st.n - 1] : '-'}</b></p><div class="sg"><div>Subject Teacher</div><div>Principal</div></div><div class="ft">Computer generated result sheet - ${INST}, ${esc(DEPT)}</div></div></div></div>`);
+            PT = 'Result-' + t.name.replace(/[^\w]+/g, '-') + '-' + t.date
+        }
+        function ttRep() {
+            $('#tc').innerHTML = `<div class="card"><div class="row">${S('Student', 'trs', [['', 'Select student'], ...enr().map(s => [s.id, sid(s) + ' - ' + s.name])], '', 'onchange="ttRepDraw()"')}${F('From', 'trf', 'date', mAdd(CM, -2) + '-01', 'onchange="ttRepDraw()"')}${F('To', 'trt', 'date', dIn(CM), 'onchange="ttRepDraw()"')}${F('Remarks (printed)', 'trr', 'text', '', 'oninput="ttRepDraw()" placeholder="optional"')}<button class="btn" onclick="ttRepPrint()">Print / Save as PDF</button></div></div><div id="trv"></div>`
+        }
+        function ttRepPrint() { const s = stu($('#trs').value); if (!s) return alert('Please select a student.'); PT = 'Test-Report-' + sid(s) + '-' + s.name.replace(/[^\w]+/g, '-'); printEl('#trv') }
+        function ttRepDraw() {
+            const s = stu($('#trs').value); if (!s) { $('#trv').innerHTML = ''; return }
+            const f = $('#trf').value, to = $('#trt').value, rem = $('#trr').value, rows = [];
+            tsts().slice().reverse().forEach(t => {
+                if (t.date < f || t.date > to || t.date < s.date) return; const st = tStat(t), v = (t.m || {})[s.id]; if (!st.n) return; if (t.cls != s.batch && v === undefined) return;
+                const ok = hasM(v); rows.push({ t, ok, v: +v, p: ok ? r1(v * 100 / t.tm) : null, avg: st.avg, pos: ok ? st.sorted.indexOf(+v) + 1 : null, n: st.n })
+            });
+            const ap = rows.filter(r => r.ok), tot = ap.reduce((a, r) => a + r.v, 0), tm = ap.reduce((a, r) => a + r.t.tm, 0), op = tm ? r1(tot * 100 / tm) : 0, sj = {};
+            ap.forEach(r => { const x = sj[r.t.sub] = sj[r.t.sub] || { n: 0, o: 0, t: 0 }; x.n++; x.o += r.v; x.t += r.t.tm });
+            $('#trv').innerHTML = `<div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>${esc(DEPT)}</small></div><div><b style="font-size:15px">STUDENT TEST REPORT</b><small>Generated: ${today()}</small></div></div><div class="bd">
+ <h4>Student Information</h4><div class="meta"><div class="phb" style="width:78px;height:92px">${s.photo ? `<img src="${s.photo}">` : esc(s.name[0] || '?').toUpperCase()}</div><div class="kv k3"><div><span>Student Name</span><b>${esc(s.name)}</b></div><div><span>Student ID</span><b>${sid(s)}</b></div><div><span>Father's Name</span><b>${esc(s.father)}</b></div><div><span>${BT}</span><b>${bl(s.batch)}</b></div><div><span>Course</span><b>${esc(s.course || '-')}</b></div><div><span>Report Period</span><b>${f} to ${to}</b></div></div></div>
+ <h4>Test Results</h4>${TB(['Date', 'Test', 'Subject', 'Marks', 'Total', '%', 'Grade', 'Class Avg', 'Position'], rows.map(r => r.ok ? `<tr><td>${r.t.date}</td><td>${esc(r.t.name)}</td><td>${esc(r.t.sub)}</td><td>${r.v}</td><td>${r.t.tm}</td><td>${r.p}%</td><td><b>${GR(r.p)}</b></td><td>${r.avg}%</td><td>${r.pos} of ${r.n}</td></tr>` : `<tr><td>${r.t.date}</td><td>${esc(r.t.name)}</td><td>${esc(r.t.sub)}</td><td colspan="6">Absent</td></tr>`), 'No tests in this period.')}
+ <div class="sum"><div><b>${ap.length}</b><span>Tests Appeared</span></div><div><b>${rows.length - ap.length}</b><span>Absent</span></div><div><b>${tot} / ${tm}</b><span>Total Marks</span></div><div><b>${op}% ${tm ? GR(op) : ''}</b><span>Overall</span></div></div>
+ ${Object.keys(sj).length ? '<h4>Subject-wise</h4>' + TB(['Subject', 'Tests', 'Marks', 'Total', '%'], Object.keys(sj).map(k => `<tr><td>${esc(k)}</td><td>${sj[k].n}</td><td>${sj[k].o}</td><td>${sj[k].t}</td><td>${r1(sj[k].o * 100 / sj[k].t)}%</td></tr>`)) : ''}
+ <p><b>Remarks:</b> ${esc(rem || '-')}</p><div class="sg"><div>Class Teacher</div><div>Principal</div><div>Parent / Guardian</div></div><div class="ft">Computer generated report - ${INST}, ${esc(DEPT)} | Grades: A+ 90+, A 80+, B 70+, C 60+, D 50+, E 40+, F below 40</div></div></div>`
+        }
+
         /* ONLINE (SUPABASE): login, roles (super_admin / admin / teacher), cloud save */
         const SB_URL = 'https://gzaatamtjcqiijhqqqdk.supabase.co', SB_KEY = 'sb_publishable_b43Ayeq_txEGgbJ14JyP3w_K9F4oFzA';
         const sb = supabase.createClient(SB_URL, SB_KEY);
@@ -1417,12 +1566,13 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         function commit() { dirty = false; busy++; Q = Q.then(() => isT() ? flushT() : flushA()).catch(() => { }).finally(() => busy--) }
         function fail() { setSt('NOT SAVED - check internet', true); clearTimeout(retry); retry = setTimeout(save, 8000) }
         /* 3-way merge so two people saving different things at the same time never lose data */
+        const DEEP = new Set(['a', 'ta', 'rp', 'tests']), isO = x => x && typeof x == 'object' && !Array.isArray(x);
         function merge3(b, l, s, deep) {
             const out = {}, ks = new Set([...Object.keys(b || {}), ...Object.keys(l || {}), ...Object.keys(s || {})]);
             for (const k of ks) {
                 const bv = b && b[k], lv = l && l[k], sv = s && s[k];
                 if (J(lv) == J(sv)) out[k] = lv; else if (J(lv) == J(bv)) out[k] = sv; else if (J(sv) == J(bv)) out[k] = lv;
-                else if (!deep && (k == 'a' || k == 'rp')) { const m = merge3(bv, lv, sv, true); if (!m) return null; out[k] = m } else return null
+                else if ((deep || DEEP.has(k)) && isO(lv) && isO(sv)) { const m = merge3(bv, lv, sv, true); if (!m) return null; out[k] = m } else return null
             }
             return out
         }
@@ -1449,15 +1599,14 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
                 setSt('All changes saved'); if (merged) softRefresh()
             } catch (e) { fail() }
         }
+        const df = (b, c) => { if (!isO(c) || !isO(b)) return c; const o = {}; for (const k in c) if (J(c[k]) != J(b[k])) o[k] = df(b[k], c[k]); return o };
         async function flushT() {
             try {
                 for (const k of DK) {
-                    const d = root.depts[k], b = base[k] || {}, pa = {}, pr = {};
-                    for (const x in d.a) if (J(d.a[x]) != J((b.a || {})[x])) pa[x] = d.a[x];
-                    for (const x in d.rp) if (J(d.rp[x]) != J((b.rp || {})[x])) pr[x] = d.rp[x];
-                    if (!Object.keys(pa).length && !Object.keys(pr).length) continue;
-                    const { data, error } = await sb.rpc('teacher_save', { p_key: k, p_a: pa, p_rp: pr }); if (error) throw error;
-                    ver[k] = data; base[k] = Object.assign(b, { a: { ...(b.a || {}), ...pa }, rp: { ...(b.rp || {}), ...pr } })
+                    const d = root.depts[k], b = base[k] || {}, pa = df(b.a || {}, d.a || {}), pr = df(b.rp || {}, d.rp || {}), pt = df(b.tests || {}, d.tests || {});
+                    if (!Object.keys(pa).length && !Object.keys(pr).length && !Object.keys(pt).length) continue;
+                    const { data, error } = await sb.rpc('teacher_save', { p_key: k, p_a: pa, p_rp: pr, p_tests: pt }); if (error) throw error;
+                    if (data == ver[k] + 1) ver[k] = data; base[k] = Object.assign(b, { a: clone(d.a), rp: clone(d.rp), tests: clone(d.tests) })
                 }
                 setSt('All changes saved')
             } catch (e) { fail() }
@@ -1470,13 +1619,13 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         }
         async function pullT() {
             const { data, error } = await sb.rpc('teacher_load'); if (error) throw error;
-            const r = { cur: root.cur, cm: root.cm, gx: [], ow: [], depts: {} };
-            for (const k in data) { ver[k] = data[k].version; r.depts[k] = data[k].value || {} }
-            root = r; norm(); const sp = split(); DK.forEach(k => { snap[k] = J(sp[k]); base[k] = JSON.parse(snap[k]) })
+            const r = { cur: root.cur, cm: root.cm, gx: [], ow: [], depts: {} }, dd = data.d || {};
+            for (const k in dd) { ver[k] = dd[k].version; r.depts[k] = dd[k].value || {} }
+            ME = data.me || []; root = r; norm(); const sp = split(); DK.forEach(k => { snap[k] = J(sp[k]); base[k] = JSON.parse(snap[k]) })
         }
         const pull = () => isT() ? pullT() : pullA();
         function refresh() { CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); deptSel(); go(CK) }
-        function softRefresh() { if (CK == 'att' && atab == 'm') { deptSel(); bar() } else refresh() } /* never wipe a half-marked attendance sheet */
+        function softRefresh() { if ((CK == 'att' && atab == 'm') || (CK == 'tst' && ttEd)) { deptSel(); bar() } else refresh() } /* never wipe a half-marked attendance sheet */
         async function conflict() {
             alert('Another user changed the same data at the same time. The latest data will be loaded now - please repeat your last entry.');
             await pull(); refresh(); setSt('Latest data loaded')
@@ -1509,7 +1658,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
                 await pull()
             } catch (e) { return showLogin('Could not load data: ' + e.message) }
             $('#who').textContent = USER + ' (' + RN[ROLE] + ')'; listen(); $('#lg').style.display = 'none';
-            CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); buildNav(); deptSel(); go(isT() ? 'att' : 'dash'); setSt('All changes saved')
+            CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); buildNav(); deptSel(); go(isT() ? 'my' : 'dash'); setSt('All changes saved')
         }
         $('#lgf').onsubmit = async e => {
             e.preventDefault(); $('#lge').textContent = '';
