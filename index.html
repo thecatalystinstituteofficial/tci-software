@@ -1142,48 +1142,100 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         }
 
         /* TEACHERS & PAYROLL */
+        /* TEACHERS & PAYROLL: fixed / hourly / percentage pay, previous-month dues, department access */
+        let PDU = {};
+        function payLbl(t) { return t.pt == 'h' ? 'Hourly ' + rs(t.rate) : t.pt == 'p' ? (+t.pct || 0) + '% of fees' : 'Fixed ' + rs(t.sal) }
+        function pKind(p) { const dm = String(p.date || '').slice(0, 7); return !dm ? '' : p.month < dm ? 'Previous month' : p.month > dm ? 'Advance' : 'This month' }
+        function pTag(p) { const k = pKind(p); return k ? `<span class="tag ${k == 'This month' ? 'ok' : 'lv'}">${k}</span>` : '-' }
+        function tDept(t) { if (t.__k && root.depts[t.__k]) return root.depts[t.__k]; for (const k of DK) { const d = root.depts[k]; if (d && d.t && d.t.includes(t)) return d } return db }
+        function pBase(t, m) {
+            const d = tDept(t), bt = t.bt || [], sts = d.s.filter(s => bt.includes(s.batch) && s.date.slice(0, 7) <= m && (!s.end || m < s.end));
+            if (t.pb == 'e') return sts.reduce((a, s) => a + (+s.fee || 0), 0);
+            const ids = new Set(sts.map(s => s.id)); return d.f.filter(f => f.month == m && ids.has(f.sid)).reduce((a, f) => a + (+f.amt || 0), 0)
+        }
+        function tDues(t, upTo, d) {
+            d = d || tDept(t); const out = []; let a = String(t.jd || '').slice(0, 7) || upTo; const pm = d.p.filter(x => x.tid == t.id).map(x => x.month).sort()[0]; if (pm && pm < a) a = pm;
+            const lo = mAdd(upTo, -47); if (a < lo) a = lo; if (a > upTo) return out;
+            months(a, upTo).forEach(m => { if (t.jd && t.jd.slice(0, 7) > m) return; const e = tPay(t, m).earned, pd = sum(d.p.filter(x => x.tid == t.id && x.month == m)), r = e - pd; if (r > 0) out.push({ m, e, pd, r }) });
+            return out
+        }
+        const tDeptNames = t => t.email ? DK.filter(k => root.depts[k] && root.depts[k].t.some(x => x.email == t.email)).map(k => DEPTS[k]) : [];
+        function ptUI() { const v = $('#tpt').value, sh = (i, on) => $(i).style.display = on ? '' : 'none'; sh('#wf', v == 'f'); sh('#wh', v == 'h'); sh('#wp', v == 'p'); sh('#wb', v == 'p') }
         PG.tch = () => {
             $('#main').innerHTML = `<h2>Teachers & Payroll</h2><div class="card"><form onsubmit="saveT(event)"><input type="hidden" id="tid"><div class="grid">` +
-                F('Full Name', 'tn', 'text', '', 'required') + F('Subject / Designation', 'tr', 'text', '', 'required') + F('Qualification', 'tq') + F('Phone', 'tp', 'tel') + F('Joining Date', 'tj', 'date', dIn(CM)) + F('Fixed Monthly Salary (Rs)', 'ts', 'number', '', 'min="0"') + S('Pay Type', 'tpt', [['f', 'Fixed monthly salary'], ['h', 'Hourly (rate x hours worked)']], 'f') + F('Hourly Rate (Rs per hour)', 'trt', 'number', '', 'min="0"') + F('Duty Start Time', 'tds', 'time') + F('Duty End Time', 'tde', 'time') + F("Login Email (teacher's own login)", 'tem', 'email', '', 'placeholder="e.g. adeel@tci.com"') +
-                `</div><label style="margin-top:12px">Assigned ${BNP}</label>${B.map(b => `<label class="ck"><input type="checkbox" class="tb" value="${esc(b)}">${bl(b)}</label>`).join('')}<div class="btns"><button class="btn">Save Teacher</button><button type="button" class="btn k" onclick="PG.tch()">Reset</button></div></form></div>
+                F('Full Name', 'tn', 'text', '', 'required') + F('Subject / Designation', 'tr', 'text', '', 'required') + F('Qualification', 'tq') + F('Phone', 'tp', 'tel') + F('Joining Date', 'tj', 'date', dIn(CM)) +
+                S('Pay Type', 'tpt', [['f', 'Fixed monthly salary'], ['h', 'Hourly (rate x hours worked)'], ['p', 'Percentage of student fees']], 'f', 'onchange="ptUI()"') +
+                `<div id="wf">${F('Fixed Monthly Salary (Rs)', 'ts', 'number', '', 'min="0"')}</div><div id="wh">${F('Hourly Rate (Rs per hour)', 'trt', 'number', '', 'min="0"')}</div>` +
+                `<div id="wp">${F('Teacher Percentage (%)', 'tpc', 'number', '', 'min="1" max="100" step="0.5" placeholder="e.g. 50"')}<div class="btns" style="margin-top:6px">${[30, 40, 50, 60].map(x => `<button type="button" class="btn k s" onclick="$('#tpc').value=${x}">${x}%</button>`).join('')}</div></div>` +
+                `<div id="wb">${S('Percentage is calculated on', 'tpb', [['c', 'Fees collected from his students'], ['e', 'Full monthly fee of his students']], 'c')}</div>` +
+                F('Duty Start Time', 'tds', 'time') + F('Duty End Time', 'tde', 'time') + F("Login Email (teacher's own login)", 'tem', 'email', '', 'placeholder="e.g. adeel@tci.com"') +
+                `</div><label style="margin-top:12px">Assigned ${BNP} <small>(for Percentage pay, his students = students of these ${BNP.toLowerCase()})</small></label>${B.map(b => `<label class="ck"><input type="checkbox" class="tb" value="${esc(b)}">${bl(b)}</label>`).join('')}` +
+                `<label style="margin-top:12px">Department access <small>(the teacher can open only the departments ticked here. Needs his login email.)</small></label>${DK.map(k => `<label class="ck"><input type="checkbox" class="td" value="${k}" ${k == root.cur ? 'checked disabled' : ''}>${DEPTS[k]}</label>`).join('')}` +
+                `<div class="btns"><button class="btn">Save Teacher</button><button type="button" class="btn k" onclick="PG.tch()">Reset</button></div></form></div>
  <div class="card"><div class="row">${F('Payroll Month', 'sm', 'month', CM, 'onchange="listT()"')}<button class="btn k" onclick="printEl('#tw')">Print / PDF</button></div><div id="tw">${PH('Teacher Payroll')}<div id="tl"></div></div></div>
- <div class="card"><h3>Salary History</h3>${TB(['Date', 'Teacher', 'Month', 'Amount', ''], db.p.slice().reverse().map(p => { const t = db.t.find(x => x.id == p.tid) || { name: '(deleted)' }; return `<tr><td>${p.date}</td><td>${esc(t.name)}</td><td>${mn(p.month)}</td><td>${rs(p.amt)}</td><td>${canMod() ? `<button class="btn s" onclick="delP(${p.id})">Delete</button>` : ''}</td></tr>` }))}</div>`; listT()
+ <div class="card"><h3>Salary History <small style="font-weight:400;color:var(--mut)">(every payment, with the month it was paid for)</small></h3><div class="row">${S('Teacher', 'shf', [['', 'All teachers'], ...db.t.map(t => [t.id, t.name])], '', 'onchange="drawHist()"')}${S('Show', 'shk', [['', 'All payments'], ['Previous month', 'Previous-month salary only'], ['This month', 'This-month salary only'], ['Advance', 'Advance only']], '', 'onchange="drawHist()"')}<button class="btn k" onclick="printEl('#shw')">Print / PDF</button></div><div id="shw">${PH('Salary Payment History')}<div id="shl"></div></div></div>`; ptUI(); listT(); drawHist()
         };
         function saveT(e) {
-            e.preventDefault(); if ($('#tid').value && !canMod()) return deny(); const id = $('#tid').value, o = { name: $('#tn').value, role: $('#tr').value, q: $('#tq').value, phone: $('#tp').value, jd: $('#tj').value, sal: $('#ts').value, pt: $('#tpt').value, rate: $('#trt').value, ds: $('#tds').value, de: $('#tde').value, email: $('#tem').value.trim().toLowerCase(), bt: [...document.querySelectorAll('.tb:checked')].map(c => c.value) };
-            if (o.pt == 'h' && (!(+o.rate > 0) || !o.ds || !o.de)) return alert('Hourly pay needs an hourly rate, duty start time and duty end time.'); if (o.pt != 'h' && o.sal === '') return alert('Please enter the fixed monthly salary.');
-            if (id) Object.assign(db.t.find(t => t.id == id), o); else db.t.push({ id: db.t_n++, ...o }); save(); PG.tch()
+            e.preventDefault(); if ($('#tid').value && !canMod()) return deny(); const id = $('#tid').value, pt = $('#tpt').value;
+            const o = { name: $('#tn').value, role: $('#tr').value, q: $('#tq').value, phone: $('#tp').value, jd: $('#tj').value, sal: pt == 'f' ? $('#ts').value : '', pt, rate: pt == 'h' ? $('#trt').value : '', pct: pt == 'p' ? $('#tpc').value : '', pb: $('#tpb').value, ds: $('#tds').value, de: $('#tde').value, email: $('#tem').value.trim().toLowerCase(), bt: [...document.querySelectorAll('.tb:checked')].map(c => c.value) };
+            if (pt == 'h' && (!(+o.rate > 0) || !o.ds || !o.de)) return alert('Hourly pay needs an hourly rate, duty start time and duty end time.');
+            if (pt == 'f' && o.sal === '') return alert('Please enter the fixed monthly salary.');
+            if (pt == 'p' && !(+o.pct > 0 && +o.pct <= 100)) return alert('Please enter the percentage (between 1 and 100).');
+            if (pt == 'p' && !o.bt.length) return alert('Percentage pay needs at least one assigned ' + BN.toLowerCase() + ', so that his students can be counted.');
+            const more = [...document.querySelectorAll('.td:checked:not(:disabled)')].map(c => c.value);
+            if (more.length && !o.email) return alert("Please enter the teacher's login email to give him access to other departments.");
+            if (id) Object.assign(db.t.find(t => t.id == id), o); else db.t.push({ id: db.t_n++, ...o });
+            const added = []; more.forEach(k => { const d = root.depts[k]; if (!d || d.t.some(x => x.email == o.email)) return; d.t.push({ id: d.t_n++, ...o, bt: [] }); added.push(DEPTS[k]) });
+            save(); PG.tch(); if (added.length) alert('Teacher added to: ' + added.join(', ') + '.\nThe teacher can now open these departments. Open each department > Teachers & Payroll > Edit to assign his ' + BNP.toLowerCase() + ' there.')
+        }
+        function drawHist() {
+            const el = $('#shl'); if (!el) return; const tf = $('#shf').value, kf = $('#shk').value;
+            const l = db.p.filter(p => (!tf || p.tid == tf) && (!kf || pKind(p) == kf)).sort((a, b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id), pv = l.filter(p => pKind(p) == 'Previous month');
+            el.innerHTML = `<p>Payments: <b>${l.length}</b> | Total: <b>${rs(sum(l))}</b> | Previous-month salary paid: <b>${rs(sum(pv))}</b></p>` + TB(['Paid On', 'Teacher', 'Salary Month', 'Paid For', 'Amount', ''], l.map(p => { const t = db.t.find(x => x.id == p.tid) || { name: '(deleted)' }; return `<tr><td>${p.date}</td><td>${esc(t.name)}</td><td>${mn(p.month)}</td><td>${pTag(p)}</td><td>${rs(p.amt)}</td><td class="np">${canMod() ? `<button class="btn s" onclick="delP(${p.id})">Delete</button>` : ''}</td></tr>` }), 'No salary payments found.')
         }
         function listT() {
-            const m = $('#sm').value; let te = 0, tp = 0;
+            const m = $('#sm').value; let te = 0, tp = 0, tv = 0;
             const rows = db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= m).map(t => {
-                const e = tPay(t, m).earned, pd = sum(db.p.filter(x => x.tid == t.id && x.month == m)), r = Math.max(0, e - pd); te += e; tp += pd;
-                const st = e == 0 && pd == 0 ? ['lv', 'Nothing due'] : r == 0 ? ['ok', 'Paid'] : pd > 0 ? ['lv', 'Partial'] : ['no', 'Due'];
-                return `<tr><td>${esc(t.name)}</td><td>${esc(t.role)}</td><td>${esc(t.q || '-')}</td><td>${(t.bt || []).join(', ') || '-'}</td><td>${t.pt == 'h' ? 'Hourly' : 'Fixed'}</td><td>${t.pt == 'h' ? rs(t.rate) + ' / hr' : rs(t.sal)}</td><td><b>${rs(e)}</b></td><td>${rs(pd)}</td><td><b style="color:${r ? '#d62828' : 'inherit'}">${rs(r)}</b></td><td><span class="tag ${st[0]}">${st[1]}</span></td>
- <td class="np">${r > 0 ? `<button class="btn y s" onclick="payT(${t.id})">Pay</button> ` : ''}<button class="btn k s" onclick="profT(${t.id})">Profile</button>${canMod() ? ` <button class="btn k s" onclick="editT(${t.id})">Edit</button> <button class="btn s" onclick="delT(${t.id})">Delete</button>` : ''}</td></tr>`
+                const c = tPay(t, m), e = c.earned, pd = sum(db.p.filter(x => x.tid == t.id && x.month == m)), r = Math.max(0, e - pd), pv = tDues(t, mAdd(m, -1)).reduce((a, x) => a + x.r, 0); te += e; tp += pd; tv += pv;
+                const st = e == 0 && pd == 0 && pv == 0 ? ['lv', 'Nothing due'] : r + pv == 0 ? ['ok', 'Paid'] : r == 0 ? ['no', 'Previous due'] : pd > 0 ? ['lv', 'Partial'] : ['no', 'Due'];
+                const sr = t.pt == 'h' ? rs(t.rate) + ' / hr' : t.pt == 'p' ? (+t.pct || 0) + '% of ' + rs(c.base) + '<br><small>' + (t.pb == 'e' ? 'full fees' : 'fees collected') + '</small>' : rs(t.sal);
+                return `<tr><td>${esc(t.name)}</td><td>${esc(t.role)}</td><td>${esc(t.q || '-')}</td><td>${(t.bt || []).map(bl).join(', ') || '-'}</td><td>${t.pt == 'h' ? 'Hourly' : t.pt == 'p' ? 'Percentage' : 'Fixed'}</td><td>${sr}</td><td><b>${rs(e)}</b></td><td>${rs(pd)}</td><td><b style="color:${r ? '#d62828' : 'inherit'}">${rs(r)}</b></td><td><b style="color:${pv ? '#d62828' : 'inherit'}">${rs(pv)}</b></td><td><span class="tag ${st[0]}">${st[1]}</span></td>
+ <td class="np">${r + pv > 0 ? `<button class="btn y s" onclick="payT(${t.id})">Pay</button> ` : ''}<button class="btn k s" onclick="profT(${t.id})">Profile</button>${canMod() ? ` <button class="btn k s" onclick="editT(${t.id})">Edit</button> <button class="btn s" onclick="delT(${t.id})">Delete</button>` : ''}</td></tr>`
             });
-            $('#tl').innerHTML = `<div class="stats"><div class="st"><b>${rs(te)}</b><span>Total earned (${mn(m)})</span></div><div class="st"><b>${rs(tp)}</b><span>Paid / cleared</span></div><div class="st"><b>${rs(Math.max(0, te - tp))}</b><span>Remaining to pay</span></div></div>` + TB(['Name', 'Subject', 'Qualification', BNP, 'Pay Type', 'Salary / Rate', 'Earned (' + mn(m) + ')', 'Paid', 'Remaining', 'Status', ''], rows, 'No teachers added yet.')
+            $('#tl').innerHTML = `<div class="stats"><div class="st"><b>${rs(te)}</b><span>Total earned (${mn(m)})</span></div><div class="st"><b>${rs(tp)}</b><span>Paid for ${mn(m)}</span></div><div class="st"><b>${rs(Math.max(0, te - tp))}</b><span>Remaining (${mn(m)})</span></div><div class="st"><b>${rs(tv)}</b><span>Previous months pending</span></div></div>` + TB(['Name', 'Subject', 'Qualification', BNP, 'Pay Type', 'Salary / Rate', 'Earned (' + mn(m) + ')', 'Paid', 'Remaining', 'Previous Due', 'Status', ''], rows, 'No teachers added yet.')
         }
-        function editT(id) { if (!canMod()) return deny(); const t = db.t.find(x => x.id == id); scrollTo(0, 0); $('#tid').value = id;[['tn', 'name'], ['tr', 'role'], ['tq', 'q'], ['tp', 'phone'], ['tj', 'jd'], ['ts', 'sal'], ['tpt', 'pt'], ['trt', 'rate'], ['tds', 'ds'], ['tde', 'de'], ['tem', 'email']].forEach(([a, b]) => $('#' + a).value = t[b] || ''); if (!$('#tpt').value) $('#tpt').value = 'f'; document.querySelectorAll('.tb').forEach(c => c.checked = (t.bt || []).includes(c.value)) }
+        function editT(id) {
+            if (!canMod()) return deny(); const t = db.t.find(x => x.id == id); scrollTo(0, 0); $('#tid').value = id;
+            [['tn', 'name'], ['tr', 'role'], ['tq', 'q'], ['tp', 'phone'], ['tj', 'jd'], ['ts', 'sal'], ['tpt', 'pt'], ['trt', 'rate'], ['tpc', 'pct'], ['tpb', 'pb'], ['tds', 'ds'], ['tde', 'de'], ['tem', 'email']].forEach(([a, b]) => $('#' + a).value = t[b] || '');
+            if (!$('#tpt').value) $('#tpt').value = 'f'; if (!$('#tpb').value) $('#tpb').value = 'c'; ptUI();
+            document.querySelectorAll('.tb').forEach(c => c.checked = (t.bt || []).includes(c.value));
+            document.querySelectorAll('.td').forEach(c => { const on = c.value == root.cur || (t.email && root.depts[c.value] && root.depts[c.value].t.some(x => x.email == t.email)); c.checked = !!on; c.disabled = !!on })
+        }
         function payT(id) {
-            const t = db.t.find(x => x.id == id), m = $('#sm').value, e = tPay(t, m).earned, p = sum(db.p.filter(x => x.tid == id && x.month == m)), r = Math.max(0, e - p);
-            modal(`<div style="width:320px"><h3 style="margin-top:0">Pay Salary - ${esc(t.name)}</h3><p>Month: <b>${mn(m)}</b></p><p>Earned: <b>${rs(e)}</b> | Already paid: <b>${rs(p)}</b><br>Remaining: <b style="color:#d62828">${rs(r)}</b></p>${F('Amount to pay now (Rs)', 'pa', 'number', r, 'min="1"')}<p><small>You can pay part now and the rest later. Remaining updates automatically.</small></p><div class="btns"><button class="btn" onclick="confirmP(${id})">Confirm Payment</button></div></div>`, false)
+            const t = db.t.find(x => x.id == id), upTo = $('#sm').value, dues = tDues(t, upTo);
+            if (!dues.length) return alert('No salary is pending for ' + t.name + ' up to ' + mn(upTo) + '.');
+            PDU = {}; dues.forEach(x => PDU[x.m] = x); const sel = dues.find(x => x.m == upTo) || dues[0];
+            modal(`<div style="width:380px;max-width:100%"><h3 style="margin-top:0">Pay Salary - ${esc(t.name)}</h3><p><small>Tick the month you are paying. Older months are previous-month salary.</small></p>
+${dues.map(x => `<label style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 2px;border-bottom:1px solid #ddd;cursor:pointer;color:#111;font-size:13px"><span><input type="radio" name="pmx" value="${x.m}" ${x.m == sel.m ? 'checked' : ''} onchange="payPick()"> <b>${mn(x.m)}</b> ${x.m < mon() ? '<span class="tag lv">Previous month</span>' : '<span class="tag ok">This month</span>'}<br><small>Earned ${rs(x.e)} | Paid ${rs(x.pd)}</small></span><b style="color:#d62828">${rs(x.r)}</b></label>`).join('')}
+<p>Total pending: <b>${rs(dues.reduce((a, x) => a + x.r, 0))}</b></p>${F('Amount to pay now (Rs)', 'pa', 'number', sel.r, 'min="1"')}<p><small>You can pay part now and the rest later. Pending updates automatically.</small></p><div class="btns"><button class="btn" onclick="confirmP(${id})">Confirm Payment</button></div></div>`, false)
         }
+        function payPick() { const c = document.querySelector('input[name=pmx]:checked'); if (c && PDU[c.value]) $('#pa').value = PDU[c.value].r }
         function confirmP(id) {
-            const m = $('#sm').value, t = db.t.find(x => x.id == id), a = +$('#pa').value; if (!(a > 0)) return alert('Please enter a valid amount.');
-            const r = tPay(t, m).earned - sum(db.p.filter(x => x.tid == id && x.month == m)); if (a > r && !confirm('This is more than the remaining ' + rs(Math.max(0, r)) + '. Pay anyway?')) return;
+            const c = document.querySelector('input[name=pmx]:checked'); if (!c) return alert('Please select the month.'); const m = c.value, a = +$('#pa').value; if (!(a > 0)) return alert('Please enter a valid amount.');
+            const r = PDU[m] ? PDU[m].r : 0; if (a > r && !confirm('This is more than the remaining ' + rs(r) + ' of ' + mn(m) + '. Pay anyway?')) return;
             db.p.push({ id: Date.now(), tid: id, month: m, amt: a, date: today() }); save(); closeM(); PG.tch()
         }
         function delP(id) { if (!canMod()) return deny(); if (confirm('Delete this salary record?')) { db.p = db.p.filter(p => p.id != id); save(); PG.tch() } }
-        function delT(id) { if (!canMod()) return deny(); if (confirm('Delete this teacher record?')) { db.t = db.t.filter(t => t.id != id); save(); PG.tch() } }
+        function delT(id) { if (!canMod()) return deny(); if (confirm('Delete this teacher record? (He will lose access to this department.)')) { db.t = db.t.filter(t => t.id != id); save(); PG.tch() } }
         function profT(id) {
-            const t = db.t.find(x => x.id == id), p = db.p.filter(x => x.tid == id);
+            const t = db.t.find(x => x.id == id), p = db.p.filter(x => x.tid == id), pc = t.pt == 'p';
             const first = (t.jd || p.map(x => x.month).sort()[0] || CM).slice(0, 7); let tE = 0, tP = 0;
-            const mrows = (first <= CM ? months(first, CM) : []).map(m => { const e = tPay(t, m).earned, pd = sum(p.filter(x => x.month == m)); if (!e && !pd) return ''; tE += e; tP += pd; return `<tr><td>${mn(m)}</td><td>${rs(e)}</td><td>${rs(pd)}</td><td><b>${rs(Math.max(0, e - pd))}</b></td></tr>` }).filter(Boolean);
-            const mt = TB(['Month', 'Earned', 'Paid', 'Remaining'], mrows.concat(mrows.length ? [`<tr><td><b>Total</b></td><td><b>${rs(tE)}</b></td><td><b>${rs(tP)}</b></td><td><b>${rs(Math.max(0, tE - tP))}</b></td></tr>`] : []), 'No salary yet.');
-            modal(`<div style="width:520px;max-width:100%"><div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>${DEPT}</small></div><div><b>TEACHER PROFILE</b></div></div><div class="bd"><div class="kv" style="margin-top:14px">
- <div><span>Name</span><b>${esc(t.name)}</b></div><div><span>Subject</span><b>${esc(t.role)}</b></div><div><span>Qualification</span><b>${esc(t.q || '-')}</b></div><div><span>Phone</span><b>${esc(t.phone || '-')}</b></div><div><span>Joined</span><b>${esc(t.jd || '-')}</b></div><div><span>Monthly Salary</span><b>${rs(t.sal)}</b></div></div>
- <h4>Assigned ${BNP}</h4><p>${(t.bt || []).map(bl).join(' | ') || 'None assigned'}</p><h4>Month-wise Salary (up to ${mLong(CM)})</h4>${mt}<h4>Salary Payments</h4>${TB(['Month', 'Date', 'Amount'], p.map(x => `<tr><td>${mn(x.month)}</td><td>${x.date}</td><td>${rs(x.amt)}</td></tr>`), 'No payments yet.')}</div></div></div>`)
+            const mrows = (first <= CM ? months(first, CM) : []).map(m => { const c = tPay(t, m), e = c.earned, pd = sum(p.filter(x => x.month == m)); if (!e && !pd) return ''; tE += e; tP += pd; return `<tr><td>${mn(m)}</td>${pc ? `<td>${rs(c.base)}</td>` : ''}<td>${rs(e)}</td><td>${rs(pd)}</td><td><b>${rs(Math.max(0, e - pd))}</b></td></tr>` }).filter(Boolean);
+            const mt = TB(pc ? ['Month', 'Student Fees', 'Earned', 'Paid', 'Remaining'] : ['Month', 'Earned', 'Paid', 'Remaining'], mrows.concat(mrows.length ? [`<tr><td><b>Total</b></td>${pc ? '<td></td>' : ''}<td><b>${rs(tE)}</b></td><td><b>${rs(tP)}</b></td><td><b>${rs(Math.max(0, tE - tP))}</b></td></tr>`] : []), 'No salary yet.');
+            const pv = tDues(t, mAdd(CM, -1)).reduce((a, x) => a + x.r, 0), dn = tDeptNames(t);
+            modal(`<div style="width:560px;max-width:100%"><div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>${DEPT}</small></div><div><b>TEACHER PROFILE</b></div></div><div class="bd"><div class="kv" style="margin-top:14px">
+ <div><span>Name</span><b>${esc(t.name)}</b></div><div><span>Subject</span><b>${esc(t.role)}</b></div><div><span>Qualification</span><b>${esc(t.q || '-')}</b></div><div><span>Phone</span><b>${esc(t.phone || '-')}</b></div><div><span>Joined</span><b>${esc(t.jd || '-')}</b></div><div><span>Pay</span><b>${esc(payLbl(t))}${pc ? ' (' + (t.pb == 'e' ? 'full fees' : 'fees collected') + ')' : ''}</b></div><div><span>Login Email</span><b>${esc(t.email || '-')}</b></div><div><span>Department Access</span><b>${esc(dn.join(', ') || DEPT)}</b></div></div>
+ <h4>Assigned ${BNP}</h4><p>${(t.bt || []).map(bl).join(' | ') || 'None assigned'}</p><p>Previous months pending (before ${mLong(CM)}): <b>${rs(pv)}</b></p><h4>Month-wise Salary (up to ${mLong(CM)})</h4>${mt}<h4>Salary Payments</h4>${TB(['Salary Month', 'Paid On', 'Paid For', 'Amount'], p.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map(x => `<tr><td>${mn(x.month)}</td><td>${x.date}</td><td>${pTag(x)}</td><td>${rs(x.amt)}</td></tr>`), 'No payments yet.')}</div></div></div>`)
         }
 
         /* EXPENSES */
@@ -1393,8 +1445,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
                 const cnt = {};
                 Object.keys(d.a).sort().forEach(key => { const [dt, b] = key.split('|'); if (XP == 'm' && !dt.startsWith(CM)) return; for (const i in d.a[key]) { const s = byId[i], v = d.a[key][i]; if (!s || !SL[v]) continue; o.at.push([...V, dt, bl(b), xid(k, s), s.name, s.course || '', SL[v]]); (cnt[i] = cnt[i] || { P: 0, A: 0, L: 0 })[v]++ } });
                 sts.forEach(s => { const c = cnt[s.id] || { P: 0, A: 0, L: 0 }, t = c.P + c.A + c.L; o.as.push([...V, xid(k, s), s.name, s.course || '', bl(s.batch), c.P, c.A, c.L, t, t ? Math.round(c.P * 100 / t) : 0]) });
-                d.t.filter(t => XP == 'a' || !t.jd || t.jd.slice(0, 7) <= CM).forEach(t => o.te.push([...V, t.name, t.role || '', t.q || '', String(t.phone || ''), t.jd || '', +t.sal || 0, (t.bt || []).map(bl).join(', ')]));
-                d.p.filter(p => xin(p.month)).sort((a, b) => xd(a.date, b.date)).forEach(p => { const t = d.t.find(x => x.id == p.tid); o.sa.push([...V, p.date, t ? t.name : '(deleted)', mn(p.month), +p.amt || 0]) });
+                d.t.filter(t => XP == 'a' || !t.jd || t.jd.slice(0, 7) <= CM).forEach(t => o.te.push([...V, t.name, t.role || '', t.q || '', String(t.phone || ''), t.jd || '', +t.sal || 0, (t.bt || []).map(bl).join(', '), payLbl(t)]));
+                d.p.filter(p => xin(p.month)).sort((a, b) => xd(a.date, b.date)).forEach(p => { const t = d.t.find(x => x.id == p.tid); o.sa.push([...V, p.date, t ? t.name : '(deleted)', mn(p.month), pKind(p) || '-', +p.amt || 0]) });
                 const dx = d.x.filter(x => XP == 'a' || x.date.startsWith(CM)).sort((a, b) => xd(a.date, b.date)); dx.forEach(x => o.ex.push([...V, x.date, x.cat, x.desc, x.to || '', +x.amt || 0]));
                 const ms = new Set(); if (XP == 'm') ms.add(CM); else { d.s.forEach(s => ms.add(s.date.slice(0, 7))); d.f.forEach(f => ms.add(f.month)); d.p.forEach(p => ms.add(p.month)); d.x.forEach(x => ms.add(x.date.slice(0, 7))) }
                 [...ms].filter(Boolean).sort().forEach(m => { const col = sum(d.f.filter(f => f.month == m)), sal = sum(d.p.filter(p => p.month == m)), ex = sum(d.x.filter(x => x.date.startsWith(m))), ad = d.s.filter(s => s.adm && s.date.startsWith(m)).reduce((a, s) => a + +s.adm, 0); o.mo.push([...V, mn(m), d.s.filter(s => live(s, m)).length, col, ad, sal, ex, col - sal - ex]) });
@@ -1415,8 +1467,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             sh.push({ n: 'Pending Fees', h: H(['ID', 'Student', 'Phone', 'Course', 'Batch / Class', 'Fee Month', 'Fee Due (Rs)']), r: o.pe, m: money(6), tot: true });
             sh.push({ n: 'Attendance', h: H(['Date', 'Batch / Class', 'ID', 'Student', 'Course', 'Status']), r: o.at });
             sh.push({ n: 'Attendance Summary', h: H(['ID', 'Student', 'Course', 'Batch / Class', 'Present', 'Absent', 'Leave', 'Total Days', 'Attendance %']), r: o.as });
-            sh.push({ n: 'Teachers', h: H(['Teacher', 'Subject / Designation', 'Qualification', 'Phone', 'Joining Date', 'Monthly Salary (Rs)', 'Assigned Batches / Classes']), r: o.te, m: money(5), tot: true });
-            sh.push({ n: 'Salaries Paid', h: H(['Date', 'Teacher', 'Salary Month', 'Amount (Rs)']), r: o.sa, m: money(3), tot: true });
+            sh.push({ n: 'Teachers', h: H(['Teacher', 'Subject / Designation', 'Qualification', 'Phone', 'Joining Date', 'Monthly Salary (Rs)', 'Assigned Batches / Classes', 'Pay Type']), r: o.te, m: money(5), tot: true });
+            sh.push({ n: 'Salaries Paid', h: H(['Date', 'Teacher', 'Salary Month', 'Paid For', 'Amount (Rs)']), r: o.sa, m: money(4), tot: true });
             sh.push({ n: 'Expenses', h: H(['Date', 'Category', 'Description', 'Paid To', 'Amount (Rs)']), r: o.ex, m: money(4), tot: true });
             if (multi) { sh.push({ n: 'Institute Expenses', h: ['Date', 'Category', 'Description', 'Amount (Rs)'], r: o.gx, m: [3], tot: true }); sh.push({ n: 'Owner Pocket', h: ['Date', 'Type', 'Description', 'Amount (Rs)'], r: o.ow, m: [3] }) }
             return sh
@@ -1453,13 +1505,16 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             const eff = Math.max(ds, arr - GRACE), out = tmin(r.out); let end = de; if (out != null) end = end == null ? out : Math.min(out, end);
             return { eff, end, late: Math.max(0, arr - GRACE - ds), mins: end == null ? 0 : Math.max(0, end - eff) }
         }
-        function tPay(t, m, ta = db.ta) {
+        function tPay(t, m, ta) {
+            ta = ta || tDept(t).ta || {};
             let days = 0, mins = 0, late = 0, ab = 0, lv = 0;
             for (const d in ta) {
                 if (!d.startsWith(m)) continue; const r = (ta[d] || {})[t.id]; if (!r) continue;
                 if (r.st == 'A') ab++; else if (r.st == 'L') lv++; else if (r.in) { const c = tDay(t, r); days++; mins += c.mins; late += c.late }
             }
-            return { days, mins, late, ab, lv, earned: t.pt == 'h' ? Math.round(mins / 60 * (+t.rate || 0)) : (+t.sal || 0) }
+            let earned = t.pt == 'h' ? Math.round(mins / 60 * (+t.rate || 0)) : (+t.sal || 0), base = 0;
+            if (t.pt == 'p') { base = pBase(t, m); earned = Math.round(base * (+t.pct || 0) / 100) }
+            return { days, mins, late, ab, lv, earned, base }
         }
         const duty = t => t.ds ? t12(tmin(t.ds)) + ' - ' + (t.de ? t12(tmin(t.de)) : '?') : '<small>not set</small>';
         PG.tat = () => {
@@ -1480,7 +1535,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             let te = 0, tp = 0;
             const rows = db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= CM).map(t => {
                 const c = tPay(t, CM), paid = sum(db.p.filter(p => p.tid == t.id && p.month == CM)); te += c.earned; tp += paid;
-                return `<tr><td>${esc(t.name)}</td><td>${t.pt == 'h' ? 'Hourly ' + rs(t.rate) : 'Fixed'}</td><td>${c.days}</td><td>${c.ab}</td><td>${c.lv}</td><td>${fh(c.mins)}</td><td>${c.late}</td><td><b>${rs(c.earned)}</b></td><td>${rs(paid)}</td><td>${rs(c.earned - paid)}</td></tr>`
+                return `<tr><td>${esc(t.name)}</td><td>${payLbl(t)}</td><td>${c.days}</td><td>${c.ab}</td><td>${c.lv}</td><td>${fh(c.mins)}</td><td>${c.late}</td><td><b>${rs(c.earned)}</b></td><td>${rs(paid)}</td><td>${rs(c.earned - paid)}</td></tr>`
             });
             $('#tms').innerHTML = TB(['Teacher', 'Pay Type', 'Days Present', 'Absent', 'Leave', 'Hours Worked', 'Late (min)', 'Earned', 'Paid', 'Due'], rows, 'No teachers.') + `<p><b>Total earned: ${rs(te)}</b> | Paid: ${rs(tp)} | Due: ${rs(te - tp)}</p><p><small>Counted start time = arrival time minus ${GRACE} minutes (but never before duty start). Fixed-salary teachers always earn their fixed salary.</small></p>`
         }
@@ -1498,12 +1553,12 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             $('#main').innerHTML = `<h2>My Attendance & Salary<small>${mLong(CM)} | ${GRACE} minute late relief</small></h2>` + ME.map(me => {
                 const t = me.t, r = (me.ta[today()] || {})[t.id], pay = tPay(t, CM, me.ta), days = Object.keys(me.ta).filter(d => d.startsWith(CM)).sort().reverse(), pm = me.p.filter(p => p.month == CM);
                 const tag = r && r.in && (r.st || 'P') == 'P' ? `<span class="tag ok">Arrived ${tt12(r.in)}</span>` + (r.out ? ` <span class="tag lv">Left ${tt12(r.out)}</span>` : '') : r && r.st ? `<span class="tag no">${SL[r.st]}</span>` : '<span class="tag lv">Not checked in yet</span>';
-                return `<div class="card"><h3>${esc(t.name)} <small>${DEPTS[me.k]}</small></h3><p>Duty time: <b>${duty(t)}</b> &nbsp;|&nbsp; Pay: <b>${t.pt == 'h' ? rs(t.rate) + ' per hour' : rs(t.sal) + ' fixed per month'}</b></p><p>Today (${today()}): ${tag}</p>
+                return `<div class="card"><h3>${esc(t.name)} <small>${DEPTS[me.k]}</small></h3><p>Duty time: <b>${duty(t)}</b> &nbsp;|&nbsp; Pay: <b>${t.pt == 'h' ? rs(t.rate) + ' per hour' : t.pt == 'p' ? (+t.pct || 0) + '% of his students fees' : rs(t.sal) + ' fixed per month'}</b></p><p>Today (${today()}): ${tag}</p>
  <div class="btns"><button class="btn" onclick="myCheck('in')" ${r && r.in && (r.st || 'P') == 'P' ? 'disabled' : ''}>Check In</button><button class="btn y" onclick="myCheck('out')" ${r && r.in ? '' : 'disabled'}>Check Out</button></div>
  <p><small>Arrive within ${GRACE} minutes of your duty start and nothing is counted late. After that only the minutes beyond ${GRACE} are counted. The time is taken from the server clock.</small></p></div>
- <div class="card"><h3>${mLong(CM)} - My Summary</h3><p>Days present: <b>${pay.days}</b> | Hours: <b>${fh(pay.mins)}</b> | Late: <b>${pay.late} min</b> | ${t.pt == 'h' ? 'Earned so far' : 'Monthly salary'}: <b>${rs(pay.earned)}</b> | Paid this month: <b>${rs(sum(pm))}</b></p>
+ <div class="card"><h3>${mLong(CM)} - My Summary</h3><p>Days present: <b>${pay.days}</b> | Hours: <b>${fh(pay.mins)}</b> | Late: <b>${pay.late} min</b> | ${t.pt == 'h' || t.pt == 'p' ? 'Earned so far' : 'Monthly salary'}: <b>${rs(pay.earned)}</b> | Paid this month: <b>${rs(sum(pm))}</b></p>
  ${TB(['Date', 'Arrived', 'Left', 'Counted From', 'Hours', 'Late (min)'], days.map(d => { const x = me.ta[d][t.id], c = tDay(t, x); return `<tr><td>${d}</td><td>${x.in ? tt12(x.in) : SL[x.st] || '-'}</td><td>${tt12(x.out)}</td><td>${c.eff != null ? t12(c.eff) : '-'}</td><td>${c.eff != null ? fh(c.mins) : '-'}</td><td>${c.eff != null ? c.late : '-'}</td></tr>` }), 'No attendance this month yet.')}
- <h4>Salary Payments Received</h4>${TB(['Month', 'Date', 'Amount'], me.p.slice().reverse().map(p => `<tr><td>${mn(p.month)}</td><td>${p.date}</td><td>${rs(p.amt)}</td></tr>`), 'No payments yet.')}</div>`
+ <h4>Salary Payments Received</h4>${TB(['Salary Month', 'Paid On', 'Paid For', 'Amount'], me.p.slice().reverse().map(p => `<tr><td>${mn(p.month)}</td><td>${p.date}</td><td>${pTag(p)}</td><td>${rs(p.amt)}</td></tr>`), 'No payments yet.')}</div>`
             }).join('')
         };
         async function myCheck(a) {
@@ -1657,7 +1712,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             const { data, error } = await sb.rpc('teacher_load'); if (error) throw error;
             const r = { cur: root.cur, cm: root.cm, gx: [], ow: [], depts: {} }, dd = data.d || {};
             for (const k in dd) { ver[k] = dd[k].version; r.depts[k] = dd[k].value || {} }
-            ME = data.me || []; root = r; norm(); const sp = split(); DK.forEach(k => { snap[k] = J(sp[k]); base[k] = JSON.parse(snap[k]) })
+            ME = data.me || []; ME.forEach(x => { if (x.t) x.t.__k = x.k }); root = r; norm(); const sp = split(); DK.forEach(k => { snap[k] = J(sp[k]); base[k] = JSON.parse(snap[k]) })
         }
         const pull = () => isT() ? pullT() : pullA();
         function refresh() { CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); deptSel(); go(CK) }
@@ -1691,7 +1746,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
                 ROLE = rr.role;
                 if (isT() && rr.depts && rr.depts.length) { const keep = DK.filter(k => rr.depts.includes(k)); DK.length = 0; DK.push(...keep) }
                 if (!DK.length) throw new Error('No department is assigned to this account.');
-                await pull()
+                await pull();
+                if (isT()) { const mk = [...new Set(ME.map(x => x.k))].filter(k => root.depts[k]); if (!mk.length) throw new Error('Your login email is not added as a teacher in any department yet. Please ask the admin to add you in Teachers & Payroll.'); Object.keys(root.depts).forEach(k => { if (!mk.includes(k)) delete root.depts[k] }); DK.length = 0; DK.push(...mk); norm() }
             } catch (e) { return showLogin('Could not load data: ' + e.message) }
             $('#who').textContent = USER + ' (' + RN[ROLE] + ')'; listen(); $('#lg').style.display = 'none';
             CM = (root.cm && /^\d{4}-\d{2}$/.test(root.cm)) ? root.cm : mon(); buildNav(); deptSel(); go(isT() ? 'my' : 'dash'); setSt('All changes saved')
@@ -14300,6 +14356,41 @@ ${adm ? `<table>${L('Fee Paid Now', rs(f.amt))}${L('Admission Fee', rs(adm))}</t
     window.TCI_ADDON = 'v2';
 })();
 
+</script>
+<script>
+/* ===== TCI ADD-ON 3: salary details inside Finance Report / Institute Finance, previous salary on Dashboard ===== */
+(function () {
+    const $q = s => document.querySelector(s);
+    const salBlock = (keys, ms) => {
+        const set = new Set(ms), cap = mon(), last = ms[ms.length - 1], end = last > cap ? cap : last, multi = keys.length > 1, A = [], Bq = [], C = [];
+        let sE = 0, sP = 0, sV = 0, sD = 0;
+        keys.forEach(k => {
+            const d = root.depts[k]; if (!d) return;
+            d.t.forEach(t => {
+                let e = 0; ms.forEach(m => { if (m > cap || (t.jd && t.jd.slice(0, 7) > m)) return; e += tPay(t, m).earned });
+                const pd = sum(d.p.filter(p => p.tid == t.id && set.has(p.month))); sE += e; sP += pd;
+                if (e || pd) A.push(`<tr>${multi ? `<td>${DEPTS[k]}</td>` : ''}<td>${esc(t.name)}</td><td>${esc(payLbl(t))}</td><td>${rs(e)}</td><td>${rs(pd)}</td><td><b>${rs(Math.max(0, e - pd))}</b></td></tr>`);
+                d.p.filter(p => p.tid == t.id && set.has(String(p.date || '').slice(0, 7)) && p.month < String(p.date).slice(0, 7)).forEach(p => { sV += +p.amt || 0; Bq.push({ k, t, p }) });
+                const dues = tDues(t, end, d), tot = dues.reduce((a, x) => a + x.r, 0);
+                if (tot > 0) { sD += tot; C.push(`<tr>${multi ? `<td>${DEPTS[k]}</td>` : ''}<td>${esc(t.name)}</td><td style="white-space:normal">${dues.map(x => mn(x.m) + ' (' + rs(x.r) + ')').join(', ')}</td><td><b>${rs(tot)}</b></td></tr>`) }
+            })
+        });
+        Bq.sort((a, b) => String(b.p.date).localeCompare(String(a.p.date)));
+        const dh = multi ? ['Department'] : [];
+        return `<h4>Teacher Salary Details</h4><div class="sum"><div><b>${rs(sE)}</b><span>Salary earned (period)</span></div><div><b>${rs(sP)}</b><span>Paid for these months</span></div><div><b>${rs(sV)}</b><span>Previous-month salary paid in this period</span></div><div><b>${rs(sD)}</b><span>Salary still pending</span></div></div>
+<div class="two"><div><h4>Salary of this period - teacher wise</h4>${TB([...dh, 'Teacher', 'Pay', 'Earned', 'Paid', 'Remaining'], A, 'No salary in this period.')}</div>
+<div><h4>Previous-month salary paid (cleared) in this period</h4>${TB([...dh, 'Teacher', 'Salary Month', 'Paid On', 'Amount'], Bq.map(x => `<tr>${multi ? `<td>${DEPTS[x.k]}</td>` : ''}<td>${esc(x.t.name)}</td><td>${mn(x.p.month)}</td><td>${x.p.date}</td><td>${rs(x.p.amt)}</td></tr>`), 'No previous-month salary was paid in this period.')}</div></div>
+<h4>Salary still pending (till ${mn(end)})</h4>${TB([...dh, 'Teacher', 'Pending Months', 'Total'], C, 'No salary is pending.')}`
+    };
+    const _fd = window.finDraw; window.finDraw = function () { _fd(); const sg = $q('#fv .sg'); if (sg) sg.insertAdjacentHTML('beforebegin', salBlock([root.cur], [CM])) };
+    const _id = window.ifinDraw; window.ifinDraw = function () { _id(); const [a, b] = rng(), ms = mrange(a, b), sg = $q('#ifv .sg'); if (sg) sg.insertAdjacentHTML('beforebegin', salBlock(DK, ms)) };
+    const _d = PG.dash; PG.dash = function () {
+        _d(); const st = $q('#main .stats'); if (!st) return;
+        const pv = db.t.filter(t => !t.jd || t.jd.slice(0, 7) <= CM).reduce((a, t) => a + tDues(t, mAdd(CM, -1)).reduce((x, y) => x + y.r, 0), 0);
+        st.insertAdjacentHTML('beforeend', `<div class="st"><b>${rs(pv)}</b><span>Previous months salary pending</span></div>`)
+    };
+    window.TCI_ADDON3 = 'v1';
+})();
 </script>
 <!--TCI-ADDON-END-->
 </body>
