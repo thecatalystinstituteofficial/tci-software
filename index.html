@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8">
-    <title>The Catalyst Institute</title>
+    <title>TCI</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <style>
         :root {
@@ -970,7 +970,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
         const TB = (h, r, e = 'No records found.') => `<div class="tw"><table><tr>${h.map(x => `<th>${x}</th>`).join('')}</tr>${r.length ? r.join('') : `<tr><td colspan="${h.length}">${e}</td></tr>`}</table></div>`;
         const months = (a, b) => { const r = []; let [y, m] = a.slice(0, 7).split('-').map(Number); const e = b.slice(0, 7); while (r.length < 48) { const s = y + '-' + String(m).padStart(2, '0'); if (s > e) break; r.push(s); if (++m > 12) { m = 1; y++ } } return r };
         const NAV = [['dash', 'Dashboard'], ['ntf', 'Notifications'], ['stu', 'Admissions'], ['att', 'Attendance'], ['my', 'My Attendance & Salary'], ['fee', 'Fee Collection'], ['tch', 'Teachers & Payroll'], ['tat', 'Teacher Attendance'], ['exp', 'Expenses'], ['rep', 'Student Report'], ['msg', 'SMS / WhatsApp'], ['tst', 'Test & Report Cards'], ['fin', 'Finance Report'], ['set', 'Department Settings'], ['ifin', 'Institute Finance'], ['xl', 'Export to Excel']];
-        const navOk = k => isT() ? ['att', 'my', 'rep', 'tst'].includes(k) && (k != 'tst' || root.cur == 'coach') : k != 'my' && (k != 'tst' || root.cur == 'coach') && (k != 'set' || canMod()) && (k != 'ntf' || ROLE == 'super_admin');
+        const navOk = k => isT() ? ['att', 'my', 'rep', 'tst'].includes(k) && (k != 'tst' || root.cur == 'coach') : k != 'my' && (k != 'tst' || root.cur == 'coach') && (k != 'set' || canMod()) && (k != 'ntf' || ROLE == 'super_admin' || ROLE == 'admin');
         const buildNav = () => { $('#nav').innerHTML = NAV.filter(([k]) => navOk(k)).map(([k, v]) => (k == 'ifin' ? '<div class="nsep">Whole Institute</div>' : '') + `<button data-k="${k}" class="${k == CK ? 'on' : ''}" onclick="go('${k}')">${v}</button>`).join('') };
         const PG = {};
         function go(k) { if (!navOk(k)) k = isT() ? 'my' : 'dash'; if (!PG[k]) k = 'dash'; CK = k; bar(); document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.k == k)); PG[k](); scrollTo(0, 0) }
@@ -1337,8 +1337,8 @@ ${dues.map(x => `<label style="display:flex;justify-content:space-between;align-
  <div class="card"><div class="row">${S('Period', 'ip', [['m', 'Selected month'], ['y', 'Whole year'], ['a', 'All time']], IP, 'onchange="IP=this.value;ifinDraw()"')}<button class="btn" onclick="printEl('#ifv')">Print / Save as PDF (1 page)</button></div></div>
  <div id="ifv"></div>
  <div class="card"><h3>Institute Expenses (common to all departments)</h3><form onsubmit="saveG(event)"><div class="grid">${F('Date', 'gd', 'date', dIn(CM), 'required')}${S('Category', 'gc', GEXC)}${F('Description', 'gn', 'text', '', 'required')}${F('Amount (Rs)', 'ga', 'number', '', 'required min="0"')}</div><div class="btns"><button class="btn">Add Expense</button></div></form><div id="gl" style="margin-top:12px"></div></div>
- <div class="card"><h3>Owner Pocket (not part of any department)</h3><form onsubmit="saveO(event)"><div class="grid">${F('Date', 'od', 'date', dIn(CM), 'required')}${S('Type', 'ot', [['in', 'Owner put in (from own pocket)'], ['out', 'Owner took from institute']])}${F('Description', 'on', 'text', '', 'required')}${F('Amount (Rs)', 'oa', 'number', '', 'required min="0"')}</div><div class="btns"><button class="btn">Add Owner Entry</button></div></form>
- <p style="color:var(--mut);font-size:12px">Put in = money the owner gave from his own pocket (or an expense he paid himself - also add that expense above). Took = money the owner withdrew. These are not income or expense; they only change the Final Balance.</p><div id="ol" style="margin-top:12px"></div></div>`; ifinDraw()
+ <div class="card"><h3>Owner Pocket (not part of any department)</h3><form onsubmit="saveO(event)"><div class="grid">${F('Date', 'od', 'date', dIn(CM), 'required')}${S('Type', 'ot', [['out', 'Owner took from institute']])}${F('Description', 'on', 'text', '', 'required')}${F('Amount (Rs)', 'oa', 'number', '', 'required min="0"')}</div><div class="btns"><button class="btn">Add Owner Entry</button></div></form>
+ <p style="color:var(--mut);font-size:12px">Took = money the owner withdrew from the institute. It is not an expense; it is only subtracted from the Final Balance. Owner put-in is no longer counted anywhere.</p><div id="ol" style="margin-top:12px"></div></div>`; ifinDraw()
         };
         function saveG(e) { e.preventDefault(); root.gx.push({ id: Date.now(), date: $('#gd').value, cat: $('#gc').value, desc: $('#gn').value, amt: $('#ga').value }); save(); PG.ifin() }
         function delG(id) { if (!canMod()) return deny(); if (confirm('Delete this institute expense?')) { root.gx = root.gx.filter(x => x.id != id); save(); ifinDraw() } }
@@ -1349,7 +1349,7 @@ ${dues.map(x => `<label style="display:flex;justify-content:space-between;align-
             const gx = root.gx.filter(x => set.has(x.date.slice(0, 7))).sort((x, y) => y.date.localeCompare(x.date)), gxs = sum(gx);
             const ow = root.ow.filter(x => set.has(x.date.slice(0, 7))).sort((x, y) => y.date.localeCompare(x.date)), oIn = sum(ow.filter(x => x.type == 'in')), oOut = sum(ow.filter(x => x.type == 'out'));
             const T = { col: 0, sal: 0, ex: 0, exp: 0, pend: 0, enrolled: 0, adm: 0 }; st.forEach(([k, s]) => { for (const p in T) T[p] += s[p] });
-            const exAll = T.ex + gxs, net = T.col - T.sal - exAll, fin = net + T.adm + oIn - oOut, label = IP == 'm' ? mLong(CM) : IP == 'y' ? 'Year ' + CM.slice(0, 4) : mn(a) + ' to ' + mn(b);
+            const exAll = T.ex + gxs, net = T.col - T.sal - exAll, fin = net + T.adm - oOut, label = IP == 'm' ? mLong(CM) : IP == 'y' ? 'Year ' + CM.slice(0, 4) : mn(a) + ' to ' + mn(b);
             const cat = {}; DK.forEach(k => root.depts[k].x.forEach(x => { if (set.has(x.date.slice(0, 7))) cat[x.cat] = (cat[x.cat] || 0) + +x.amt })); gx.forEach(x => cat[x.cat] = (cat[x.cat] || 0) + +x.amt);
             const mrows = IP == 'm' ? [] : ms.map(m => {
                 let c = 0, s = 0, x = 0, ad = 0; DK.forEach(k => { const d = root.depts[k]; c += sum(d.f.filter(f => f.month == m)); s += sum(d.p.filter(p => p.month == m)); x += sum(d.x.filter(y => y.date.startsWith(m))); ad += d.s.filter(z => z.adm && z.date.startsWith(m)).reduce((q, z) => q + +z.adm, 0) }); x += sum(root.gx.filter(y => y.date.startsWith(m)));
@@ -1357,18 +1357,18 @@ ${dues.map(x => `<label style="display:flex;justify-content:space-between;align-
             }).filter(Boolean);
             $('#ifv').innerHTML = `<div class="rpt"><div class="rh"><div><h1>${INST}</h1><small>All Departments</small></div><div><b style="font-size:15px">INSTITUTE FINANCE REPORT</b><small>${label}</small></div></div><div class="bd">
  <h4>Summary</h4><div class="sum"><div><b>${rs(T.col)}</b><span>Monthly Fees Collected</span></div><div><b>${rs(T.sal)}</b><span>Salaries</span></div><div><b>${rs(exAll)}</b><span>Expenses (all)</span></div><div><b>${rs(net)}</b><span>Net Balance</span></div></div>
- <div class="sum" style="margin-top:8px"><div><b>${rs(T.adm)}</b><span>Admission Fees (separate)</span></div><div><b>${rs(oIn)}</b><span>Owner Put In</span></div><div><b>${rs(oOut)}</b><span>Owner Took</span></div><div><b>${rs(fin)}</b><span>Final Balance</span></div></div>
- <p><small>Net Balance = Monthly Fees - Salaries - Expenses (admission fees are not part of monthly income). Final Balance = Net Balance + Admission Fees + Owner Put In - Owner Took.</small></p>
+ <div class="sum" style="margin-top:8px"><div><b>${rs(T.adm)}</b><span>Admission Fees (separate)</span></div><div><b>${rs(oOut)}</b><span>Owner Took (deducted)</span></div><div><b>${rs(fin)}</b><span>Final Balance</span></div></div>
+ <p><small>Net Balance = Monthly Fees - Salaries - Expenses (admission fees are not part of monthly income). Final Balance = Net Balance + Admission Fees - Owner Took. (Owner Put In is not added anywhere.)</small></p>
  <p>Students: <b>${T.enrolled}</b> | Expected fees: <b>${rs(T.exp)}</b> | Collection rate: <b>${T.exp ? Math.round(T.col * 100 / T.exp) : 0}%</b> | Pending: <b>${rs(T.pend)}</b>${IP == 'm' ? '' : ' <small>(pending is counted up to the current month)</small>'}</p>
  <h4>Department-wise Summary</h4>${TB(['Department', 'Students', 'Expected Fees', 'Collected', 'Pending', 'Admission Fees', 'Salaries', 'Expenses', 'Net'], [...st.map(([k, s]) => `<tr><td>${DEPTS[k]}</td><td>${s.enrolled}</td><td>${rs(s.exp)}</td><td>${rs(s.col)}</td><td>${rs(s.pend)}</td><td>${rs(s.adm)}</td><td>${rs(s.sal)}</td><td>${rs(s.ex)}</td><td><b>${rs(s.net)}</b></td></tr>`),
                 `<tr><td>Institute (common expenses)</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>${rs(gxs)}</td><td><b>${rs(-gxs)}</b></td></tr>`,
                 `<tr><td><b>TOTAL</b></td><td><b>${T.enrolled}</b></td><td><b>${rs(T.exp)}</b></td><td><b>${rs(T.col)}</b></td><td><b>${rs(T.pend)}</b></td><td><b>${rs(T.adm)}</b></td><td><b>${rs(T.sal)}</b></td><td><b>${rs(exAll)}</b></td><td><b>${rs(net)}</b></td></tr>`])}
  <div class="two"><div><h4>Expenses by Category (all departments)</h4>${TB(['Category', 'Amount'], Object.keys(cat).map(c => `<tr><td>${esc(c)}</td><td>${rs(cat[c])}</td></tr>`), 'No expenses in this period.')}
- <h4>Owner Pocket</h4>${TB(['Date', 'Type', 'Description', 'Amount'], ow.map(x => `<tr><td>${x.date}</td><td>${x.type == 'in' ? 'Put in' : 'Took'}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td></tr>`), 'No owner entries in this period.')}</div>
+ <h4>Owner Pocket</h4>${TB(['Date', 'Type', 'Description', 'Amount'], ow.map(x => `<tr><td>${x.date}</td><td>${x.type == 'in' ? 'Put in (old entry - not counted)' : 'Took'}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td></tr>`), 'No owner entries in this period.')}</div>
  ${IP == 'm' ? '' : `<div><h4>Month-wise Summary</h4>${TB(['Month', 'Collected', 'Admission', 'Salaries', 'Expenses', 'Net'], mrows, 'No activity in this period.')}</div>`}</div>
  <div class="sg"><div>Accountant</div><div>Principal</div></div><div class="ft">Computer generated report - ${INST}</div></div></div>`;
             $('#gl').innerHTML = `<p>Institute expenses in this period: <b>${rs(gxs)}</b></p>` + TB(['Date', 'Category', 'Description', 'Amount', ''], gx.map(x => `<tr><td>${x.date}</td><td>${esc(x.cat)}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td><td>${canMod() ? `<button class="btn s" onclick="delG(${x.id})">Delete</button>` : ''}</td></tr>`), 'No institute-level expenses in this period.');
-            $('#ol').innerHTML = `<p>Owner put in: <b>${rs(oIn)}</b> | Owner took: <b>${rs(oOut)}</b> | Net (put in - took): <b>${rs(oIn - oOut)}</b></p>` + TB(['Date', 'Type', 'Description', 'Amount', ''], ow.map(x => `<tr><td>${x.date}</td><td>${x.type == 'in' ? 'Put in' : 'Took'}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td><td>${canMod() ? `<button class="btn s" onclick="delO(${x.id})">Delete</button>` : ''}</td></tr>`), 'No owner entries in this period.')
+            $('#ol').innerHTML = `<p>Owner took (subtracted from Final Balance): <b>${rs(oOut)}</b></p>` + TB(['Date', 'Type', 'Description', 'Amount', ''], ow.map(x => `<tr><td>${x.date}</td><td>${x.type == 'in' ? 'Put in (old entry - not counted)' : 'Took'}</td><td>${esc(x.desc)}</td><td>${rs(x.amt)}</td><td>${canMod() ? `<button class="btn s" onclick="delO(${x.id})">Delete</button>` : ''}</td></tr>`), 'No owner entries in this period.')
         }
 
         /* EXCEL EXPORT (works offline, no library needed) */
@@ -1460,7 +1460,7 @@ ${dues.map(x => `<label style="display:flex;justify-content:space-between;align-
                 sh.push({ n: 'Department Summary', h: ['Department', 'Students', 'Fees Collected', 'Admission Fees', 'Salaries Paid', 'Expenses', 'Net (Fees - Salaries - Expenses)'], r: o.ds, m: [1, 2, 3, 4, 5, 6], tot: true });
                 sh.push({ n: 'Monthly Summary', h: H(['Month', 'Students Enrolled', 'Fees Collected', 'Admission Fees', 'Salaries Paid', 'Expenses', 'Net (Fees - Salaries - Expenses)']), r: o.mo, m: money(2, 3, 4, 5, 6), tot: true });
                 o.gx = gx.map(x => [x.date, x.cat, x.desc, +x.amt || 0]);
-                o.ow = root.ow.filter(x => XP == 'a' || x.date.startsWith(CM)).sort((a, b) => xd(a.date, b.date)).map(x => [x.date, x.type == 'in' ? 'Owner put in' : 'Owner took', x.desc, +x.amt || 0])
+                o.ow = root.ow.filter(x => XP == 'a' || x.date.startsWith(CM)).sort((a, b) => xd(a.date, b.date)).map(x => [x.date, x.type == 'in' ? 'Owner put in (old entry - not counted)' : 'Owner took', x.desc, +x.amt || 0])
             } else sh.push({ n: 'Monthly Summary', h: ['Month', 'Students Enrolled', 'Fees Collected', 'Admission Fees', 'Salaries Paid', 'Expenses', 'Net (Fees - Salaries - Expenses)'], r: o.mo, m: [2, 3, 4, 5, 6], tot: true });
             sh.push({ n: 'Students', h: H(['ID', 'Student Name', "Father's Name", 'Phone', 'Course', 'Batch / Class', 'Monthly Fee (Rs)', 'Admission Fee (Rs)', 'Admission Date', 'Address']), r: o.st, m: money(6, 7), tot: true });
             sh.push({ n: 'Fees', h: H(['Receipt No', 'Payment Date', 'Student ID', 'Student', 'Course', 'Batch / Class', 'Fee Month', 'Method', 'Amount (Rs)']), r: o.fe, m: money(8), tot: true });
@@ -14432,6 +14432,7 @@ ${adm ? `<table>${L('Fee Paid Now', rs(f.amt))}${L('Admission Fee', rs(adm))}</t
 .nti.new{background:rgba(255,195,0,.12)}
 .nti .dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex-shrink:0}
 .nti small{color:var(--mut)}
+.t4toast{max-width:340px}@media(max-width:760px){.t4toast{left:10px;right:10px;max-width:none}}
 .t4n{width:150px;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
 `;
     const st = document.createElement('style'); st.textContent = RC_CSS + `
@@ -14602,6 +14603,11 @@ ${adm ? `<table>${L('Fee Paid Now', rs(f.amt))}${L('Admission Fee', rs(adm))}</t
     const isSA = () => typeof ROLE != 'undefined' && ROLE == 'super_admin';
     const TY = { att: ['Attendance', '#2e9e5b'], fee: ['Fee received', '#d62828'], adm: ['New admission', '#2a6fdb'], exp: ['Expense', '#b86e00'], sal: ['Salary paid', '#7a3fb5'], test: ['Test / marks', '#0e8a8a'], rc: ['Report card', '#c2185b'], msg: ['Message sent', '#555'], del: ['Deleted / removed', '#111'] };
     T4.TY = TY;
+    const isAD = () => typeof ROLE != 'undefined' && ROLE == 'admin';
+    const canN = () => isSA() || isAD();
+    const ADM_T = ['att', 'adm', 'fee', 'test', 'rc', 'msg'];   /* what an Admin sees in the notification box */
+    const clrKey = () => 'tci_nt_clr_' + USER;
+    const clrTs = () => +(localStorage.getItem(clrKey()) || 0);
     let SN = null, inited = false, lastToast = 0, pendingAbsent = [];
 
     /* ---------- snapshot of the things we watch ---------- */
@@ -14675,17 +14681,18 @@ ${adm ? `<table>${L('Fee Paid Now', rs(f.amt))}${L('Admission Fee', rs(adm))}</t
     const seenTs = () => +(localStorage.getItem(seenKey()) || 0);
     function allN() {
         const o = []; DK.forEach(k => { const d = root.depts[k]; if (!d) return; for (const id in d.tests || {}) { const t = d.tests[id]; if (t._x && t.nt) o.push({ ...t, id, k }) } });
-        return o.sort((a, b) => b.ts - a.ts)
+        const r = isSA() ? o : o.filter(x => ADM_T.includes(x.type) && x.ts > clrTs());
+        return r.sort((a, b) => b.ts - a.ts)
     }
     T4.allN = allN;
     function badge() {
         const b = $q('nav button[data-k="ntf"]'); if (!b) return;
-        const n = isSA() ? allN().filter(x => x.ts > seenTs() && x.by != USER).length : 0, o = b.querySelector('.t4bdg'); if (o) o.remove();
+        const n = canN() ? allN().filter(x => x.ts > seenTs() && x.by != USER).length : 0, o = b.querySelector('.t4bdg'); if (o) o.remove();
         if (n) b.insertAdjacentHTML('beforeend', '<span class="t4bdg">' + n + '</span>')
     }
     function beep() { try { const c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.frequency.value = 880; g.gain.value = .06; o.start(); setTimeout(() => { o.stop(); c.close() }, 160) } catch (e) { } }
     function check() {
-        if (!isSA()) return; const all = allN(), fresh = all.filter(x => x.ts > lastToast && x.by != USER);
+        if (!canN()) return; const all = allN(), fresh = all.filter(x => x.ts > lastToast && x.by != USER);
         if (fresh.length) {
             lastToast = all[0].ts; beep();
             fresh.slice(0, 3).reverse().forEach(x => toast(TY[x.type] ? TY[x.type][0] : 'Update', x.msg + ' - by ' + x.nm, () => go('ntf')));
@@ -14701,24 +14708,32 @@ ${adm ? `<table>${L('Fee Paid Now', rs(f.amt))}${L('Admission Fee', rs(adm))}</t
     }
 
     PG.ntf = function () {
-        if (!isSA()) { $q('#main').innerHTML = '<h2>Notifications</h2><div class="card"><p>Only the Super Admin can see notifications.</p></div>'; return }
+        if (!canN()) { $q('#main').innerHTML = '<h2>Notifications</h2><div class="card"><p>Only the Super Admin and Admin can see notifications.</p></div>'; return }
         const all = allN(), seen = seenTs(), td = today(), perm = window.Notification ? Notification.permission : 'unsupported';
-        const rows = DK.map(k => { const d = root.depts[k]; if (!d) return ''; const fees = (d.f || []).filter(f => f.date == td); return { k, d, col: fees.reduce((a, f) => a + (+f.amt || 0), 0), nf: fees.length } });
+        const rows = !isSA() ? [] : DK.map(k => { const d = root.depts[k]; if (!d) return ''; const fees = (d.f || []).filter(f => f.date == td); return { k, d, col: fees.reduce((a, f) => a + (+f.amt || 0), 0), nf: fees.length } });
         const attRows = []; DK.forEach(k => { const d = root.depts[k]; if (!d) return; ((d.cfg && d.cfg.b) || []).forEach(b => { const n = (d.s || []).filter(s => s.batch == b && s.date <= td && (!s.end || td.slice(0, 7) < s.end)).length; if (!n) return; const rec = d.a[td + '|' + b]; let by = ''; if (rec) { const nn = all.find(x => x.k == k && x.type == 'att' && x.msg.includes(' on ' + td + ':') && x.msg.includes(bl(b))); by = nn ? nn.nm : '' } const c = rec ? Object.values(rec) : []; attRows.push(`<tr><td>${esc(dLabel(k))}</td><td>${bl(b)}</td><td>${n}</td><td>${rec ? '<span class="tag ok">Marked</span>' : '<span class="tag no">Not marked yet</span>'}</td><td>${rec ? 'P ' + c.filter(v => v == 'P').length + ' / A ' + c.filter(v => v == 'A').length + ' / L ' + c.filter(v => v == 'L').length : '-'}</td><td>${esc(by)}</td></tr>`) }) });
-        const types = Object.keys(TY), f1 = NT.t, f2 = NT.k;
+        const types = isSA() ? Object.keys(TY) : ADM_T, f1 = NT.t, f2 = NT.k;
         let l = all.filter(x => (!f1 || x.type == f1) && (!f2 || x.k == f2)).slice(0, 150);
-        $q('#main').innerHTML = `<h2>Notifications<small>Only you (Super Admin) can see this | updates arrive automatically</small></h2>
+        $q('#main').innerHTML = `<h2>Notifications<small>${isSA() ? 'Super Admin - all notifications' : 'Admin - your notification box'} | updates arrive automatically</small></h2>
 <div class="stats">${rows.map(r => r ? `<div class="st"><b>${rs(r.col)}</b><span>${esc(dLabel(r.k))} - fees today (${r.nf})</span></div>` : '').join('')}<div class="st"><b>${all.filter(x => x.ts > seen && x.by != USER).length}</b><span>New notifications</span></div></div>
 <div class="card"><h3>Today's attendance - ${td}</h3>${TB(['Department', BN, 'Students', 'Status', 'Counts', 'Marked by'], attRows, 'No batches with students.')}</div>
 <div class="card"><div class="row"><div><label>Type</label><select id="nft" onchange="NT.t=this.value;PG.ntf()"><option value="">All</option>${types.map(t => `<option value="${t}" ${f1 == t ? 'selected' : ''}>${TY[t][0]}</option>`).join('')}</select></div>
 <div><label>Department</label><select id="nfk" onchange="NT.k=this.value;PG.ntf()"><option value="">All</option>${DK.map(k => `<option value="${k}" ${f2 == k ? 'selected' : ''}>${esc(dLabel(k))}</option>`).join('')}</select></div>
-<button class="btn" onclick="ntRead()">Mark all as read</button>${perm == 'default' ? '<button class="btn y" onclick="ntPerm()">Turn on desktop alerts</button>' : ''}<button class="btn k" onclick="ntClear()">Delete older than 30 days</button></div>
+<button class="btn" onclick="ntRead()">Mark all as read</button>${perm == 'default' ? '<button class="btn y" onclick="ntPerm()">Turn on desktop alerts</button>' : ''}${isSA() ? '<button class="btn k" onclick="ntClear()">Delete older than 30 days</button><button class="btn" style="background:#d62828;color:#fff" onclick="ntClearAll()">Clear all notifications</button>' : '<button class="btn k" onclick="ntClearAll()">Clear my box</button>'}</div>
 ${perm == 'denied' ? '<p class="t4mini">Desktop alerts are blocked in this browser. In-app alerts still work while this page is open.</p>' : ''}
 <div>${l.map(x => { const ty = TY[x.type] || ['Update', '#555']; return `<div class="nti ${x.ts > seen && x.by != USER ? 'new' : ''}"><span class="dot" style="background:${ty[1]}"></span><div><b>${esc(ty[0])}</b> - ${esc(x.msg)}<br><small>${nowStr(x.ts)} | by ${esc(x.nm || x.by || '')} (${esc(RN[x.role] || x.role || '')})</small></div></div>` }).join('') || '<p>No notifications yet. They appear here as soon as a teacher marks attendance, a fee is received, and so on.</p>'}</div></div>`;
         badge()
     };
     const NT = window.NT = { t: '', k: '' };
     window.ntRead = () => { const a = allN(); localStorage.setItem(seenKey(), String(a.length ? a[0].ts : Date.now())); PG.ntf() };
+    window.ntClearAll = () => {
+        if (!confirm(isSA() ? 'Clear ALL notifications for everyone? New notifications will start fresh from now.' : 'Clear all notifications from your box?')) return;
+        let n = 0;
+        if (isSA()) { DK.forEach(k => { const d = root.depts[k]; if (!d || !d.tests) return; for (const id in d.tests) { const t = d.tests[id]; if (t._x && t.nt) { delete d.tests[id]; n++ } } }); if (n) save() }
+        else localStorage.setItem(clrKey(), String(Date.now()));
+        localStorage.setItem(seenKey(), String(Date.now())); lastToast = Date.now();
+        PG.ntf(); badge()
+    };
     window.ntPerm = () => { try { Notification.requestPermission().then(() => PG.ntf()) } catch (e) { } };
     window.ntClear = () => { const lim = Date.now() - 30 * 864e5; let n = 0; DK.forEach(k => { const d = root.depts[k]; if (!d || !d.tests) return; for (const id in d.tests) { const t = d.tests[id]; if (t._x && t.nt && t.ts < lim) { delete d.tests[id]; n++ } } }); if (n) save(); alert(n + ' old notification(s) deleted.'); PG.ntf() };
 
@@ -14729,7 +14744,7 @@ ${perm == 'denied' ? '<p class="t4mini">Desktop alerts are blocked in this brows
     const iv = setInterval(() => {
         if (inited || typeof USER == 'undefined' || !USER || !ROLE || !root || !root.depts || !DK.some(k => root.depts[k] && Object.keys(root.depts[k]).length)) return;
         inited = true; clearInterval(iv); takeSnap(); const a = allN(); lastToast = a.length ? a[0].ts : 0;
-        if (isSA()) { prune(); badge() }
+        if (isSA()) prune(); if (canN()) badge()
     }, 400);
 })();
 
@@ -14747,7 +14762,7 @@ ${perm == 'denied' ? '<p class="t4mini">Desktop alerts are blocked in this brows
         note: { n: 'Notice / holiday', en: 'Dear {father}, notice from {inst}: ', ur: 'محترم {father} صاحب، {inst} کی جانب سے اطلاع: ' },
         cus: { n: 'Custom message', en: '', ur: '' }
     };
-    const CFG0 = { ch: 'wa', lang: 'both', cc: '92', auto: 'ask', gwch: 'sms' };
+    const CFG0 = { ch: 'wa', lang: 'both', cc: '92', auto: 'off', gwch: 'sms' };
     const cfgOf = d => Object.assign({}, CFG0, ((d || db).tests || {}).CFG_MSG || {});
     const tplOf = (k, d) => { const o = (cfgOf(d).tpl || {})[k]; return { n: TPL0[k].n, en: o ? o.en : TPL0[k].en, ur: o ? o.ur : TPL0[k].ur } };
     const fill = (t, c) => String(t || '').replace(/\{(\w+)\}/g, (m, k) => c[k] !== undefined ? c[k] : m);
@@ -14810,12 +14825,12 @@ ${perm == 'denied' ? '<p class="t4mini">Desktop alerts are blocked in this brows
     T4.absentFlow = async function (list) {
         const items = [];
         list.forEach(({ k, date, ids }) => {
-            const d = root.depts[k], c = cfgOf(d); if (!d || c.auto == 'off') return;
+            const d = root.depts[k], c = cfgOf(d); if (!d || c.auto != 'gw') return;
             ids.forEach(id => { const s = (d.s || []).find(x => x.id == id); if (!s || wasSent(d, date, id, 'abs')) return; const num = normNum(msgNum(s), d); items.push({ k, date, s, num, tpl: 'abs', text: build('abs', c.lang, s, { date }, null, k), auto: c.auto, lang: c.lang, ch: c.ch }) })
         });
         if (!items.length) return;
-        if (items.every(x => x.auto == 'gw')) { const good = items.filter(x => okNum(x.num)); const r = await runGw(good, true); if (r.bad.length && r.ok == 0) absPopup(items); return }
-        absPopup(items)
+        if (items.every(x => x.auto == 'gw')) { const good = items.filter(x => okNum(x.num)); const r = await runGw(good, true); return }
+        /* no popup any more - absent parents are messaged from the SMS / WhatsApp page */
     };
     function absPopup(items) {
         AB = items; const c = cfgOf(db);
@@ -14911,7 +14926,7 @@ ${F('Search', 'mq', 'text', MS.q, 'placeholder="Name, ID or phone" oninput="MS4.
 <div><label>Default send method</label><select id="sch"><option value="wa" ${c.ch == 'wa' ? 'selected' : ''}>WhatsApp</option><option value="sms" ${c.ch == 'sms' ? 'selected' : ''}>SMS (phone app)</option><option value="gw" ${c.ch == 'gw' ? 'selected' : ''}>Auto gateway</option></select></div>
 <div><label>Default language</label><select id="slg"><option value="both" ${c.lang == 'both' ? 'selected' : ''}>Urdu + English</option><option value="ur" ${c.lang == 'ur' ? 'selected' : ''}>Urdu only</option><option value="en" ${c.lang == 'en' ? 'selected' : ''}>English only</option></select></div>
 <div><label>Country code</label><input id="scc" value="${esc(c.cc)}" placeholder="92"></div>
-<div><label>When attendance is saved and someone is Absent</label><select id="sau"><option value="ask" ${c.auto == 'ask' ? 'selected' : ''}>Ask me - show the absent list to message</option><option value="gw" ${c.auto == 'gw' ? 'selected' : ''}>Send automatically (needs gateway)</option><option value="off" ${c.auto == 'off' ? 'selected' : ''}>Do nothing</option></select></div>
+<div><label>When attendance is saved and someone is Absent</label><select id="sau"><option value="off" ${c.auto != 'gw' ? 'selected' : ''}>No popup - send absent messages from the SMS / WhatsApp page</option><option value="gw" ${c.auto == 'gw' ? 'selected' : ''}>Send automatically (needs gateway)</option></select></div>
 <div><label>Gateway sends as</label><select id="sgw"><option value="sms" ${c.gwch == 'sms' ? 'selected' : ''}>SMS</option><option value="wa" ${c.gwch == 'wa' ? 'selected' : ''}>WhatsApp Business API</option></select></div></div>
 <h4>Message templates</h4>${Object.keys(TPL0).map(k => { const T = tplOf(k); return `<div style="border-top:1px solid var(--line);padding-top:8px;margin-top:8px"><b>${TPL0[k].n}</b><div class="grid"><div><label>English</label><textarea data-tp="${k}:en" rows="3">${esc(T.en)}</textarea></div><div><label>اردو</label><textarea class="ur" data-tp="${k}:ur" rows="3">${esc(T.ur)}</textarea></div></div></div>` }).join('')}
 <div class="btns"><button class="btn" onclick="msgSetSave()">Save settings</button><button class="btn k" onclick="msgSetReset()">Reset templates to default</button></div></div>
